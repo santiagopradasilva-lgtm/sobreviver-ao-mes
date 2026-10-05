@@ -1,0 +1,2052 @@
+<!DOCTYPE html>
+<!--
+  ═══════════════════════════════════════════════════════════════
+  SOBREVIVER AO MÊS — Edição Santa Casa
+  Simulador de orçamento de 30 dias · dinheiro + bem-estar
+  Ficheiro único, 100% offline, sem dependências externas.
+
+  © 2026 Santiago Prada Fernandes Leandro Da Silva · v2.0
+  Licenciado sob a PolyForm Noncommercial License 1.0.0
+  https://polyformproject.org/licenses/noncommercial/1.0.0
+  ═══════════════════════════════════════════════════════════════
+-->
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Sobreviver ao Mês — Edição Santa Casa</title>
+<style>
+  :root{
+    --maroon:#83212E;
+    --maroon-dark:#5e1720;
+    --gold:#a3791f;
+    --gold-bg:#f7f1e3;
+    --cream:#FFFBF3;
+    --grey:#F4F4F4;
+    --grey-line:#e2dcd6;
+    --black:#1A1A1A;
+    --white:#FFFFFF;
+    --good:#2f7a45;
+    --good-bg:#eef4ee;
+    --bad:#a83232;
+    --bad-bg:#fdf0f0;
+    --warn:#8c5809;
+    --warn-bg:#fdf4e6;
+    --font-serif: Georgia, 'Times New Roman', Times, serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --r-sm:8px; --r-md:14px; --r-pill:999px;
+    --dur:200ms;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; min-height:100%;
+    background:linear-gradient(180deg,#f3ece0 0%, var(--cream) 320px);
+    font-family:var(--font-sans);
+    color:var(--black);
+    font-size:16px; line-height:1.5;
+    display:flex; flex-direction:column;
+    -webkit-tap-highlight-color:transparent;
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{ animation-duration:0.001ms !important; transition-duration:0.001ms !important; }
+  }
+  button{ font:inherit; }
+  button:focus-visible, a:focus-visible{ outline:3px solid var(--maroon); outline-offset:2px; }
+
+  /* ---------- barra superior ---------- */
+  header.hud{
+    position:sticky; top:0; z-index:5;
+    background:var(--maroon); color:var(--white);
+    padding:10px 16px;
+    padding-top:calc(10px + env(safe-area-inset-top,0px));
+    box-shadow:0 2px 10px rgba(0,0,0,.15);
+  }
+  .hud-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; max-width:640px; margin:0 auto; }
+  .hud-left{ min-width:0; }
+  .hud-title{ font-family:var(--font-serif); font-weight:700; font-size:17px; letter-spacing:.2px; }
+  .hud-day{ font-size:12.5px; opacity:.9; }
+  .hud-right{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  .money-pill{
+    background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.35);
+    border-radius:var(--r-pill); padding:6px 14px; font-weight:700; font-size:15px;
+    display:flex; align-items:center; gap:6px; white-space:nowrap;
+    transition:background var(--dur) ease;
+  }
+  .money-pill.neg{ background:var(--bad); border-color:var(--bad); }
+  .money-pill.bump{ animation:pillBump 420ms ease; }
+  @keyframes pillBump{ 0%{transform:none;} 35%{transform:scale(1.14);} 100%{transform:none;} }
+  .icon-btn{
+    background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.35); color:var(--white);
+    border-radius:var(--r-pill); width:36px; height:36px; cursor:pointer; font-size:16px;
+    display:flex; align-items:center; justify-content:center; padding:0; flex-shrink:0;
+  }
+  .icon-btn:hover{ background:rgba(255,255,255,.26); }
+
+  /* barra de bem-estar */
+  .wb-row{ max-width:640px; margin:8px auto 0; display:flex; align-items:center; gap:8px; }
+  /* uma regra de autor com display vence o atributo [hidden] do browser —
+     sem esta linha a barra continuava visível nos ecrãs de preparação */
+  .wb-row[hidden]{ display:none; }
+  /* largura fixa para as duas etiquetas, senão as barras não alinham */
+  .wb-label{ font-size:11.5px; opacity:.9; white-space:nowrap; min-width:58px; }
+  .wb-track{ display:block; flex:1; min-width:0; height:8px; border-radius:var(--r-pill); background:rgba(255,255,255,.22); overflow:hidden; }
+  /* display:block é obrigatório — num <span> inline a largura em % é ignorada */
+  .wb-fill{ display:block; height:100%; border-radius:var(--r-pill); background:#6fbf87; transition:width 420ms ease, background 420ms ease; }
+  .wb-fill.mid{ background:#e3b23c; }
+  .wb-fill.low{ background:#e07a5f; }
+  .wb-num{ font-size:12px; font-weight:700; min-width:30px; text-align:right; }
+
+  /* Não há barra de progresso do mês: o dia já está escrito por extenso
+     no cabeçalho ("Dia 12 de 30"), e uma barra a dizer o mesmo era ruído. */
+
+  /* ---------- toasts ---------- */
+  #toastStack{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(16px + env(safe-area-inset-bottom,0px));
+    z-index:60; width:min(420px, calc(100vw - 24px));
+    display:flex; flex-direction:column; gap:8px; pointer-events:none;
+  }
+  .toast{
+    background:var(--white); border:1px solid var(--grey-line); border-left:4px solid var(--maroon);
+    border-radius:var(--r-sm); padding:10px 13px; box-shadow:0 6px 20px rgba(0,0,0,.14);
+    display:flex; gap:10px; align-items:flex-start; animation:toastIn 260ms ease;
+  }
+  .toast.out{ animation:toastOut 220ms ease forwards; }
+  @keyframes toastIn{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:none; } }
+  @keyframes toastOut{ to{ opacity:0; transform:translateY(10px); } }
+  .toast.good{ border-left-color:var(--good); }
+  .toast.bad{ border-left-color:var(--bad); }
+  .toast-ico{ font-size:19px; line-height:1.1; flex-shrink:0; }
+  .toast-tt{ font-weight:700; font-size:13.5px; }
+  .toast-bd{ font-size:12.5px; color:#5c5c5c; }
+
+  /* ---------- layout ---------- */
+  main{ flex:1; display:flex; justify-content:center; padding:20px 14px 40px; }
+  .stage{ width:100%; max-width:640px; min-width:0; }
+
+  .card{
+    background:var(--white); border:1px solid var(--grey-line);
+    border-radius:var(--r-md); padding:22px 20px; box-shadow:0 1px 3px rgba(0,0,0,.05);
+    animation:cardIn var(--dur) ease;
+  }
+  @keyframes cardIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
+
+  .card-icon{ font-size:34px; line-height:1; margin-bottom:10px; }
+  .card-eyebrow{ font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--maroon); margin-bottom:4px; }
+  .card-title{ font-family:var(--font-serif); font-size:21px; font-weight:700; margin:0 0 8px; color:var(--black); }
+  .card-prompt{ font-size:15.5px; color:#3a3a3a; margin:0 0 18px; }
+
+  .choice-list{ display:flex; flex-direction:column; gap:10px; }
+  .choice-btn{
+    text-align:left; width:100%; background:var(--grey); border:1.5px solid var(--grey-line);
+    border-radius:var(--r-sm); padding:13px 14px; cursor:pointer; min-height:48px;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    transition:border-color var(--dur) ease, background var(--dur) ease, transform var(--dur) ease;
+  }
+  .choice-btn:hover{ border-color:var(--maroon); background:#fdfaf5; }
+  .choice-btn:active{ transform:scale(0.985); }
+  .choice-label{ font-size:15px; font-weight:600; color:var(--black); }
+  .choice-sub{ font-size:12.5px; color:#6b6b6b; margin-top:2px; font-weight:400; }
+  .choice-tags{ display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0; }
+  .choice-delta{ font-weight:700; font-size:14.5px; white-space:nowrap; padding:3px 10px; border-radius:var(--r-pill); }
+  .choice-delta.cost{ background:var(--bad-bg); color:var(--bad); }
+  .choice-delta.gain{ background:var(--good-bg); color:var(--good); }
+  .choice-delta.zero{ background:var(--grey); color:#6b6b6b; border:1px solid var(--grey-line); }
+  .choice-wb{ font-size:11.5px; font-weight:700; white-space:nowrap; padding:2px 8px; border-radius:var(--r-pill); }
+  .choice-wb.up{ background:var(--good-bg); color:var(--good); }
+  .choice-wb.down{ background:var(--warn-bg); color:var(--warn); }
+
+  .primary-btn{
+    width:100%; background:var(--maroon); color:var(--white); border:none;
+    border-radius:var(--r-sm); padding:14px 16px; font-weight:700; font-size:15.5px;
+    cursor:pointer; min-height:48px; transition:background var(--dur) ease;
+  }
+  .primary-btn:hover{ background:var(--maroon-dark); }
+
+  /* painel de resultado depois de uma escolha */
+  .feedback{ display:none; }
+  .feedback.show{ display:block; animation:cardIn var(--dur) ease; }
+  .feedback-result{
+    display:flex; align-items:center; gap:10px; padding:12px 14px; border-radius:var(--r-sm);
+    font-weight:700; font-size:15.5px; margin-bottom:12px; flex-wrap:wrap;
+  }
+  .feedback-result.cost{ background:var(--bad-bg); color:var(--bad); }
+  .feedback-result.gain{ background:var(--good-bg); color:var(--good); }
+  .feedback-result.zero{ background:var(--gold-bg); color:var(--gold); }
+  .feedback-wb{ font-size:13px; font-weight:700; padding:2px 10px; border-radius:var(--r-pill); background:rgba(255,255,255,.7); }
+  .feedback-tip{ font-size:14.5px; color:#3a3a3a; background:var(--grey); border-radius:var(--r-sm); padding:12px 14px; margin-bottom:18px; }
+  .feedback-tip b{ color:var(--maroon); }
+
+  .options-hidden{ display:none; }
+
+  /* cartões de escolha de emprego / zona / casa */
+  .option-grid{ display:flex; flex-direction:column; gap:12px; }
+  .option-card{
+    border:1.5px solid var(--grey-line); border-radius:var(--r-md); padding:16px;
+    cursor:pointer; background:var(--white); transition:border-color var(--dur) ease, box-shadow var(--dur) ease;
+    text-align:left; width:100%;
+  }
+  .option-card:hover{ border-color:var(--maroon); box-shadow:0 2px 8px rgba(131,33,46,.08); }
+  .option-head{ display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap; }
+  .option-icon{ font-size:24px; }
+  .option-title{ font-weight:700; font-size:16px; }
+  .option-figure{ font-weight:700; color:var(--maroon); font-size:15px; margin-left:auto; }
+  .option-desc{ font-size:13.5px; color:#5c5c5c; margin:4px 0 0; }
+
+  /* ---------- minijogos ---------- */
+  .mg-brief{ background:var(--gold-bg); border:1px solid #e8dcc0; border-radius:var(--r-sm); padding:14px; margin-bottom:16px; }
+  .mg-brief h3{ margin:0 0 6px; font-size:14px; color:var(--maroon); text-transform:uppercase; letter-spacing:.5px; }
+  .mg-brief ul{ margin:0; padding-left:18px; font-size:14px; color:#3a3a3a; }
+  .mg-brief li{ margin-bottom:4px; }
+  .mg-brief li:last-child{ margin-bottom:0; }
+
+  .mg-arena{
+    position:relative; width:100%; height:330px; border-radius:var(--r-md);
+    overflow:hidden; border:1px solid var(--grey-line); background:#eef3f7;
+    touch-action:none; user-select:none; -webkit-user-select:none;
+  }
+  @media (max-width:420px){ .mg-arena{ height:280px; } }
+
+  .mg-bar{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    font-size:13px; font-weight:700; margin-bottom:8px; flex-wrap:wrap;
+  }
+  .mg-timer{ background:var(--grey); border-radius:var(--r-pill); padding:3px 12px; }
+  .mg-timer.urgent{ background:var(--bad-bg); color:var(--bad); }
+  .mg-score{ color:var(--maroon); }
+
+  /* contagem decrescente */
+  .mg-count{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(255,251,243,.92); z-index:9;
+    font-family:var(--font-serif); font-size:72px; font-weight:700; color:var(--maroon);
+  }
+  .mg-count span{ animation:countPop 760ms ease; }
+  @keyframes countPop{ 0%{ transform:scale(.5); opacity:0; } 40%{ transform:scale(1.1); opacity:1; } 100%{ transform:scale(1); opacity:1; } }
+
+  /* supermercado */
+  .sm-sky{ position:absolute; inset:0; background:linear-gradient(180deg,#f6fafd 0%,#e4edf4 100%); }
+  .sm-shelf{ position:absolute; left:0; right:0; height:7px; background:#cbbba4; opacity:.5; }
+  .sm-floor{ position:absolute; left:0; right:0; bottom:0; height:30px; background:#d9cdbb; }
+  .sm-list{ position:absolute; top:8px; left:8px; right:8px; display:flex; flex-wrap:wrap; gap:5px; z-index:4; }
+  .sm-chip{
+    background:rgba(255,255,255,.94); border:1px solid var(--grey-line); border-radius:var(--r-pill);
+    padding:2px 9px; font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px;
+  }
+  .sm-chip.done{ opacity:.42; text-decoration:line-through; background:var(--good-bg); border-color:#bcd6c2; }
+  .sm-item{ position:absolute; font-size:27px; line-height:1; will-change:transform; }
+  .sm-item.impulse{ filter:drop-shadow(0 0 4px rgba(168,50,50,.45)); }
+  .sm-cart{ position:absolute; bottom:28px; font-size:36px; line-height:1; will-change:transform; z-index:3; }
+  .sm-pop{
+    position:absolute; font-size:14px; font-weight:800; pointer-events:none; z-index:6;
+    animation:popUp 620ms ease forwards;
+  }
+  @keyframes popUp{ from{ opacity:1; transform:translateY(0);} to{ opacity:0; transform:translateY(-32px);} }
+  .mg-flash{ position:absolute; inset:0; background:var(--bad); opacity:0; pointer-events:none; z-index:8; }
+  .mg-flash.hit{ animation:flashHit 260ms ease; }
+  @keyframes flashHit{ 0%{opacity:.26;} 100%{opacity:0;} }
+
+  /* contas */
+  .bl-bg{ position:absolute; inset:0; background:linear-gradient(180deg,#fbf7ef 0%,#f1e9dc 100%); }
+  .bl-bill{
+    position:absolute; width:124px; background:var(--white); border:1.5px solid var(--grey-line);
+    border-radius:var(--r-sm); padding:9px 10px 8px; cursor:pointer; box-shadow:0 3px 10px rgba(0,0,0,.1);
+    text-align:center; animation:cardIn 220ms ease;
+  }
+  .bl-bill:hover{ border-color:var(--maroon); }
+  .bl-bill.paid{ animation:billGone 300ms ease forwards; pointer-events:none; }
+  .bl-bill.late{ animation:billLate 360ms ease forwards; pointer-events:none; }
+  @keyframes billGone{ to{ opacity:0; transform:scale(.72) translateY(-14px); } }
+  @keyframes billLate{ 0%{ transform:translateX(0);} 25%{ transform:translateX(-6px);} 55%{ transform:translateX(6px);} 100%{ opacity:0; transform:translateY(16px);} }
+  .bl-ico{ font-size:21px; line-height:1.1; }
+  .bl-name{ font-size:11.5px; font-weight:700; margin-top:1px; }
+  .bl-amt{ font-size:14px; font-weight:800; color:var(--maroon); }
+  .bl-fuse{ height:5px; border-radius:var(--r-pill); background:var(--grey); overflow:hidden; margin-top:6px; }
+  .bl-fuse-fill{ height:100%; background:var(--good); border-radius:var(--r-pill); width:100%; }
+  .bl-fuse-fill.warn{ background:var(--gold); }
+  .bl-fuse-fill.danger{ background:var(--bad); }
+
+  /* resultados de minijogo */
+  .mg-results{ border:1.5px solid var(--grey-line); border-radius:var(--r-md); padding:16px; margin-bottom:16px; background:var(--gold-bg); }
+  .mg-results h3{ margin:0 0 10px; font-family:var(--font-serif); font-size:18px; }
+  .mg-stat-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .mg-stat{ background:var(--white); border-radius:var(--r-sm); padding:9px 11px; border:1px solid var(--grey-line); }
+  .mg-stat .n{ font-weight:800; font-size:17px; }
+  .mg-stat .l{ font-size:11.5px; color:#6b6b6b; }
+
+  /* ---------- resumo final ---------- */
+  .summary-balance{ text-align:center; margin:6px 0 18px; }
+  .summary-balance .num{ font-family:var(--font-serif); font-size:42px; font-weight:700; }
+  .summary-balance .tag{ display:inline-block; margin-top:6px; padding:5px 14px; border-radius:var(--r-pill); font-weight:700; font-size:13.5px; }
+  .summary-stats{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+  .stat-box{ background:var(--grey); border-radius:var(--r-sm); padding:11px 12px; }
+  .stat-box .n{ font-weight:700; font-size:18px; }
+  .stat-box .l{ font-size:12px; color:#6b6b6b; }
+
+  .chart-wrap{ border:1px solid var(--grey-line); border-radius:var(--r-sm); padding:14px 12px 10px; margin-bottom:16px; background:var(--white); }
+  .chart-title{ font-size:12.5px; font-weight:700; color:var(--maroon); text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px; }
+  .chart-area{ position:relative; display:flex; align-items:stretch; gap:2px; height:120px; }
+  .bc-col{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .bc-pad{ flex-shrink:0; }
+  .bc-bar{ width:100%; background:var(--maroon); border-radius:2px 2px 0 0; min-height:2px; }
+  .bc-bar.neg{ background:var(--bad); border-radius:0 0 2px 2px; }
+  .chart-zero{ position:absolute; left:0; right:0; border-top:1.5px solid #9a9a9a; pointer-events:none; }
+  .chart-zero span{ position:absolute; right:0; top:-15px; font-size:10px; color:#8a8a8a; background:var(--white); padding:0 3px; }
+  .chart-axis{ display:flex; justify-content:space-between; font-size:11px; color:#8a8a8a; margin-top:5px; }
+
+  .summary-log{ max-height:190px; overflow-y:auto; border:1px solid var(--grey-line); border-radius:var(--r-sm); margin-bottom:18px; }
+  .summary-log-row{ display:flex; justify-content:space-between; gap:8px; padding:8px 12px; font-size:13px; border-bottom:1px solid var(--grey-line); }
+  .summary-log-row:last-child{ border-bottom:none; }
+  .summary-log-row .d{ color:var(--good); font-weight:700; white-space:nowrap; }
+  .summary-log-row .d.neg{ color:var(--bad); }
+
+  /* O rodapé legal só aparece no início e no fim. Repeti-lo nos 30 dias de
+     jogo era mobília: ninguém o lê ao décimo ecrã e rouba atenção às opções. */
+  .footnote{ text-align:center; font-size:12px; color:#8a8a8a; margin:0 14px 16px; }
+  .footnote a{ color:#8a8a8a; }
+  body.playing .footnote{ display:none; }
+
+  /* ============================================================
+     ECRÃ INICIAL, REGRAS E CRÉDITOS
+     Mesma linguagem visual do jogo grande: lockup SANTA|CASA,
+     mealheiro, fundo quente com manchas lentas.
+     ============================================================ */
+  /* Nota: display vive no :not(.hidden), senão a camada invisível
+     continua a apanhar os cliques do ecrã por baixo. */
+  .overlay{ display:none; }
+  .overlay:not(.hidden){
+    position:fixed; inset:0; z-index:40;
+    display:flex; align-items:center; justify-content:center;
+    padding:24px 16px; overflow-y:auto;
+    background:radial-gradient(ellipse at 50% 30%, #ffffff 0%, #fdfbf6 45%, #f7f1e4 100%);
+    animation:menuFadeIn .45s ease;
+  }
+  @keyframes menuFadeIn{ 0%{ opacity:0; transform:scale(1.02); } 100%{ opacity:1; transform:scale(1); } }
+  /* enquanto o menu está aberto o jogo por baixo não deve espreitar */
+  body.pre-game header.hud, body.pre-game main, body.pre-game .footnote{ visibility:hidden; }
+
+  .menu-bg{ position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+  .menu-bg::before{
+    content:''; position:absolute; width:560px; height:560px; border-radius:50%;
+    background:radial-gradient(circle, rgba(163,121,31,.16) 0%, transparent 70%);
+    top:-160px; left:-140px; animation:menuBlobA 9s ease-in-out infinite alternate;
+  }
+  .menu-bg::after{
+    content:''; position:absolute; width:460px; height:460px; border-radius:50%;
+    background:radial-gradient(circle, rgba(131,33,46,.13) 0%, transparent 70%);
+    bottom:-120px; right:-100px; animation:menuBlobB 11s ease-in-out infinite alternate;
+  }
+  @keyframes menuBlobA{ 0%{ transform:translate(0,0) scale(1); } 100%{ transform:translate(40px,30px) scale(1.08); } }
+  @keyframes menuBlobB{ 0%{ transform:translate(0,0) scale(1); } 100%{ transform:translate(-35px,-25px) scale(1.06); } }
+
+  .menu-inner{
+    position:relative; z-index:1; display:flex; flex-direction:column; align-items:center;
+    max-width:400px; text-align:center; gap:2px; margin:auto;
+  }
+  .logo-lockup{
+    display:inline-flex; align-items:center; gap:10px;
+    font-family:var(--font-serif); font-size:clamp(22px,5vw,32px);
+    font-weight:700; letter-spacing:1px;
+  }
+  .logo-lockup .santa{ color:var(--maroon); }
+  .logo-lockup .divider{ width:2px; height:1.6em; background:var(--maroon); display:inline-block; }
+  .logo-lockup .casa{ color:var(--black); }
+  .tagline{ font-family:var(--font-serif); font-style:italic; color:var(--maroon); font-size:14px; margin-top:3px; }
+
+  .menu-mascot{ width:86px; height:118px; color:var(--maroon); filter:drop-shadow(0 6px 14px rgba(131,33,46,.22)); margin:10px 0 2px; }
+
+  /* Entrada em cascata, o mealheiro a respirar e a moeda a cair em ciclo.
+     Tudo CSS, sem imagens. Desligado por completo em movimento reduzido —
+     a base já fica visível e imóvel sem esta media query. */
+  @media (prefers-reduced-motion: no-preference){
+    .menu-inner > *{ opacity:0; animation:menuRise .5s ease-out forwards; }
+    .menu-inner > *:nth-child(1){ animation-delay:.05s; }
+    .menu-inner > *:nth-child(2){ animation-delay:.11s; }
+    .menu-inner > *:nth-child(3){ animation-delay:.17s; }
+    .menu-inner > *:nth-child(4){ animation-delay:.23s; }
+    .menu-inner > *:nth-child(5){ animation-delay:.29s; }
+    .menu-inner > *:nth-child(6){ animation-delay:.35s; }
+    .menu-inner > *:nth-child(7){ animation-delay:.41s; }
+    @keyframes menuRise{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:translateY(0); } }
+
+    .menu-mascot{ animation:menuRise .5s ease-out .17s forwards, mascotBob 3.6s ease-in-out .8s infinite; transform-origin:center bottom; }
+    @keyframes mascotBob{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-3px); } }
+
+    /* os dias enchem-se um a um e recomeçam: o mês a passar */
+    .cal-days rect{ animation:dayFill 5s ease-in-out infinite; }
+    @keyframes dayFill{
+      0%, 6%{ fill:#e8e0d4; }
+      16%, 76%{ fill:var(--maroon); }
+      88%, 100%{ fill:#e8e0d4; }
+    }
+    .cal-days rect:nth-child(1){ animation-delay:0s; }
+    .cal-days rect:nth-child(2){ animation-delay:.07s; }
+    .cal-days rect:nth-child(3){ animation-delay:.14s; }
+    .cal-days rect:nth-child(4){ animation-delay:.21s; }
+    .cal-days rect:nth-child(5){ animation-delay:.28s; }
+    .cal-days rect:nth-child(6){ animation-delay:.35s; }
+    .cal-days rect:nth-child(7){ animation-delay:.42s; }
+    .cal-days rect:nth-child(8){ animation-delay:.49s; }
+    .cal-days rect:nth-child(9){ animation-delay:.56s; }
+    .cal-days rect:nth-child(10){ animation-delay:.63s; }
+    .cal-days rect:nth-child(11){ animation-delay:.70s; }
+    .cal-days rect:nth-child(12){ animation-delay:.77s; }
+    .cal-days rect:nth-child(13){ animation-delay:.84s; }
+    .cal-days rect:nth-child(14){ animation-delay:.91s; }
+    .cal-days rect:nth-child(15){ animation-delay:.98s; }
+
+    .cal-coin{ transform-origin:18.4px 23.4px; animation:coinPulse 5s ease-in-out infinite; }
+    @keyframes coinPulse{
+      0%, 72%{ transform:scale(1); }
+      80%{ transform:scale(1.16); }
+      88%, 100%{ transform:scale(1); }
+    }
+  }
+  /* sem animação, o calendário aparece cheio */
+  .cal-days rect{ fill:var(--maroon); }
+  .menu-title{
+    font-family:var(--font-serif); font-size:clamp(34px,8vw,46px); font-weight:700;
+    color:var(--black); letter-spacing:-.5px; margin:14px 0 0; line-height:1.05;
+  }
+  .menu-sub{ font-size:14.5px; color:#5c5c5c; margin:8px 0 0; max-width:330px; }
+  .menu-start{
+    margin-top:22px; background:var(--maroon); color:var(--white); border:none;
+    border-radius:var(--r-pill); padding:14px 54px; font-weight:700; font-size:17px;
+    cursor:pointer; min-height:50px; box-shadow:0 4px 14px rgba(131,33,46,.26);
+    transition:background var(--dur) ease, transform var(--dur) ease;
+  }
+  .menu-start:hover{ background:var(--maroon-dark); transform:translateY(-1px); }
+  .menu-secondary-row{ display:flex; align-items:center; gap:10px; margin-top:14px; }
+  .menu-link{
+    background:none; border:none; color:var(--maroon); font-size:14px; font-weight:700;
+    cursor:pointer; padding:8px 6px; min-height:40px; text-decoration:underline; text-underline-offset:3px;
+  }
+  .menu-link:hover{ color:var(--maroon-dark); }
+  .menu-link-sep{ color:#c9bfae; }
+  .menu-version{
+    position:absolute; bottom:14px; left:16px; right:16px; z-index:1;
+    text-align:center; font-size:11.5px; color:#9a9a9a; line-height:1.45;
+  }
+
+  /* painel branco partilhado por "Como jogar" e "Créditos" */
+  .sheet{
+    position:relative; z-index:1; background:var(--white); border:1px solid var(--grey-line);
+    border-radius:var(--r-md); padding:26px 22px; max-width:440px; width:100%;
+    box-shadow:0 10px 36px rgba(0,0,0,.1); margin:auto; text-align:left;
+  }
+  .sheet h2{ font-family:var(--font-serif); font-size:23px; margin:0 0 4px; }
+  .sheet .sheet-eyebrow{ font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--maroon); margin-bottom:4px; }
+  .sheet p{ font-size:14.5px; color:#3a3a3a; }
+  .rule-item{ display:flex; gap:12px; align-items:flex-start; margin-bottom:14px; }
+  .rule-ico{ font-size:22px; line-height:1.2; flex-shrink:0; width:30px; text-align:center; }
+  .rule-tt{ font-weight:700; font-size:15px; }
+  .rule-bd{ font-size:13.5px; color:#5c5c5c; }
+
+  .credits-center{ text-align:center; }
+  .credits-name{ font-family:var(--font-serif); font-size:25px; font-weight:700; margin:2px 0 0; }
+  .credits-rule{ width:54px; height:2px; background:var(--gold); margin:16px auto; border:none; }
+  .credits-role{ font-size:14px; color:#5c5c5c; margin:6px 0 0; }
+  .credits-foot{ font-size:12px; color:#8a8a8a; margin-top:20px; line-height:1.6; }
+  .credits-foot a{ color:#8a8a8a; }
+
+  /* Em modo automático (a seguir ao "Jogar") os créditos correm sozinhos:
+     o botão "Voltar" dá lugar a uma linha para saltar. */
+  .credits-skip{ display:none; }
+  #creditsOverlay.credits-auto .credits-skip{ display:block; font-size:13px; color:#8a8a8a; margin-top:20px; text-align:center; }
+  #creditsOverlay.credits-auto #creditsCloseBtn{ display:none; }
+  @media (prefers-reduced-motion: no-preference){
+    #creditsOverlay.credits-auto .sheet > *{ opacity:0; animation:creditsUp .42s ease-out both; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(1){ animation-delay:.06s; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(2){ animation-delay:.14s; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(3){ animation-delay:.26s; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(4){ animation-delay:.36s; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(5){ animation-delay:.60s; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(6){ animation-delay:.72s; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(7){ animation-delay:.82s; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(8){ animation-delay:.92s; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(9){ animation-delay:1.04s; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(10){ animation-delay:1.16s; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(11){ animation-delay:1.34s; }
+    #creditsOverlay.credits-auto .sheet > *:nth-child(12){ animation-delay:1.5s; }
+    @keyframes creditsUp{ from{ opacity:0; transform:translateY(9px); } to{ opacity:1; transform:none; } }
+  }
+</style>
+</head>
+<body class="pre-game">
+
+<!-- ================= ECRÃ INICIAL ================= -->
+<div class="overlay" id="menuOverlay">
+  <div class="menu-bg" aria-hidden="true"></div>
+  <div class="menu-inner">
+    <div class="logo-lockup">
+      <span class="santa">SANTA</span>
+      <span class="divider" aria-hidden="true"></span>
+      <span class="casa">CASA</span>
+    </div>
+    <div class="tagline">Misericórdia de Lisboa</div>
+
+    <!-- Mascote própria deste jogo: um calendário do mês a encher-se dia a
+         dia, com a moeda ao canto. O mealheiro é do jogo grande. -->
+    <svg class="menu-mascot" viewBox="0 0 24 28" aria-hidden="true">
+      <!-- argolas -->
+      <rect x="6.4" y="0.6" width="1.5" height="4" rx=".75" fill="var(--gold)"/>
+      <rect x="16.1" y="0.6" width="1.5" height="4" rx=".75" fill="var(--gold)"/>
+      <!-- corpo -->
+      <rect x="2" y="2.8" width="20" height="22.4" rx="2.2" fill="var(--white)" stroke="currentColor" stroke-width="1.1"/>
+      <path d="M2 5 a2.2 2.2 0 0 1 2.2-2.2 h15.6 A2.2 2.2 0 0 1 22 5 v3.4 H2 Z" fill="currentColor"/>
+      <!-- dias do mês -->
+      <g class="cal-days">
+        <rect x="4.1"  y="11.0" width="2.5" height="2.5" rx=".6"/>
+        <rect x="7.5"  y="11.0" width="2.5" height="2.5" rx=".6"/>
+        <rect x="10.9" y="11.0" width="2.5" height="2.5" rx=".6"/>
+        <rect x="14.3" y="11.0" width="2.5" height="2.5" rx=".6"/>
+        <rect x="17.7" y="11.0" width="2.5" height="2.5" rx=".6"/>
+        <rect x="4.1"  y="14.6" width="2.5" height="2.5" rx=".6"/>
+        <rect x="7.5"  y="14.6" width="2.5" height="2.5" rx=".6"/>
+        <rect x="10.9" y="14.6" width="2.5" height="2.5" rx=".6"/>
+        <rect x="14.3" y="14.6" width="2.5" height="2.5" rx=".6"/>
+        <rect x="17.7" y="14.6" width="2.5" height="2.5" rx=".6"/>
+        <rect x="4.1"  y="18.2" width="2.5" height="2.5" rx=".6"/>
+        <rect x="7.5"  y="18.2" width="2.5" height="2.5" rx=".6"/>
+        <rect x="10.9" y="18.2" width="2.5" height="2.5" rx=".6"/>
+        <rect x="14.3" y="18.2" width="2.5" height="2.5" rx=".6"/>
+        <rect x="17.7" y="18.2" width="2.5" height="2.5" rx=".6"/>
+      </g>
+      <!-- moeda ao canto -->
+      <g class="cal-coin">
+        <circle cx="18.4" cy="23.4" r="4.1" fill="var(--gold)" stroke="var(--white)" stroke-width="1.1"/>
+        <text x="18.4" y="25.0" font-size="4.6" font-weight="700" fill="var(--white)" text-anchor="middle" font-family="Georgia, serif">€</text>
+      </g>
+    </svg>
+
+    <h1 class="menu-title">Sobreviver ao Mês</h1>
+    <div class="menu-sub">Trinta dias, um ordenado e uma casa para pagar. O que fazes com o que sobra?</div>
+
+    <button id="menuPlayBtn" type="button" class="menu-start">Jogar</button>
+
+    <div class="menu-secondary-row">
+      <button id="menuRulesBtn" type="button" class="menu-link">Como jogar</button>
+      <span class="menu-link-sep" aria-hidden="true">·</span>
+      <button id="menuCreditsBtn" type="button" class="menu-link">Créditos</button>
+      <span class="menu-link-sep" aria-hidden="true">·</span>
+      <button id="menuSoundBtn" type="button" class="menu-link" aria-pressed="true">Som: ligado</button>
+    </div>
+  </div>
+  <div class="menu-version">Projeto educativo desenvolvido no âmbito de um estágio curricular na Santa Casa da Misericórdia de Lisboa, no Centro de Capacitação da Boavista</div>
+</div>
+
+<!-- ================= COMO JOGAR ================= -->
+<div class="overlay hidden" id="rulesOverlay" role="dialog" aria-modal="true" aria-label="Como jogar">
+  <div class="menu-bg" aria-hidden="true"></div>
+  <div class="sheet">
+    <div class="sheet-eyebrow">Antes de começar</div>
+    <h2>Como se joga</h2>
+    <p style="margin:0 0 18px;">Escolhes um emprego, uma zona e uma casa. Depois vives os 30 dias do mês, um ecrã de cada vez.</p>
+
+    <div class="rule-item">
+      <span class="rule-ico" aria-hidden="true">💶</span>
+      <span><span class="rule-tt">Dinheiro</span><div class="rule-bd">O saldo da tua conta. Começa com o ordenado menos a renda. Se chegar a negativo, isso é dívida.</div></span>
+    </div>
+    <div class="rule-item">
+      <span class="rule-ico" aria-hidden="true">🙂</span>
+      <span><span class="rule-tt">Bem-estar</span><div class="rule-bd">Como te sentes. Sair com amigos sobe, recusar tudo desce, e cada dia no vermelho desgasta.</div></span>
+    </div>
+    <div class="rule-item">
+      <span class="rule-ico" aria-hidden="true">⚖️</span>
+      <span><span class="rule-tt">Cada escolha mostra os dois custos</span><div class="rule-bd">Antes de clicares vês o que custa em euros e o que custa (ou dá) em bem-estar.</div></span>
+    </div>
+    <div class="rule-item">
+      <span class="rule-ico" aria-hidden="true">🎮</span>
+      <span><span class="rule-tt">Dois minijogos</span><div class="rule-bd">No dia 7 vais às compras, no dia 12 pagas as contas. O que fizeres neles conta para o saldo.</div></span>
+    </div>
+    <div class="rule-item" style="margin-bottom:20px;">
+      <span class="rule-ico" aria-hidden="true">🏁</span>
+      <span><span class="rule-tt">Não há forma certa de ganhar</span><div class="rule-bd">No fim vês o saldo e o bem-estar lado a lado. Acabar rico e miserável também é perder.</div></span>
+    </div>
+
+    <button class="primary-btn" id="rulesCloseBtn">Voltar</button>
+  </div>
+</div>
+
+<!-- ================= CRÉDITOS ================= -->
+<div class="overlay hidden" id="creditsOverlay" role="dialog" aria-modal="true" aria-label="Créditos">
+  <div class="menu-bg" aria-hidden="true"></div>
+  <div class="sheet credits-center">
+    <div class="sheet-eyebrow">Créditos</div>
+    <h2 style="margin-bottom:14px;">Sobreviver ao Mês</h2>
+    <p style="margin:0;font-size:13px;color:#6b6b6b;">Conceito, escrita, design e programação</p>
+    <p class="credits-name">Santiago Prada Fernandes Leandro Da Silva</p>
+    <hr class="credits-rule">
+    <p class="credits-role">Orientação: Dr. Rafael de Moraes</p>
+    <p class="credits-role">Centro de Capacitação da Boavista</p>
+    <p class="credits-role">Santa Casa da Misericórdia de Lisboa</p>
+    <hr class="credits-rule">
+    <p style="font-size:13.5px;color:#5c5c5c;margin:0;">Simulador educativo de literacia financeira. Todos os valores, empregos e zonas são ilustrativos e não constituem aconselhamento financeiro.</p>
+    <div class="credits-foot">
+      © 2026 Santiago Prada Fernandes Leandro Da Silva · v2.0<br>
+      Licenciado sob a <a href="https://polyformproject.org/licenses/noncommercial/1.0.0" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a><br>
+      Utilização livre para fins não comerciais.
+    </div>
+    <button class="primary-btn" id="creditsCloseBtn" style="margin-top:20px;">Voltar</button>
+    <p class="credits-skip">Clica em qualquer sítio para continuar</p>
+  </div>
+</div>
+
+<header class="hud">
+  <div class="hud-row">
+    <div class="hud-left">
+      <div class="hud-title">Sobreviver ao Mês</div>
+      <div class="hud-day" id="hudDay">Antes do dia 1</div>
+    </div>
+    <div class="hud-right">
+      <div class="money-pill" id="moneyPill" aria-live="polite">💶 <span id="moneyValue">€0</span></div>
+      <button class="icon-btn" id="soundBtn" title="Ligar/desligar som" aria-label="Ligar ou desligar o som">🔊</button>
+    </div>
+  </div>
+  <div class="wb-row" id="wbRow" hidden>
+    <span class="wb-label">Bem-estar</span>
+    <span class="wb-track"><span class="wb-fill" id="wbFill" style="width:70%"></span></span>
+    <span class="wb-num" id="wbValue">70</span>
+  </div>
+</header>
+
+<main>
+  <div class="stage" id="stage"></div>
+</main>
+
+<p class="footnote">
+  Edição Santa Casa · simulador educativo, sem ligação a bancos ou serviços reais.<br>
+  © 2026 Santiago Prada Fernandes Leandro Da Silva · v2.0 ·
+  <a href="https://polyformproject.org/licenses/noncommercial/1.0.0" target="_blank" rel="noopener">PolyForm Noncommercial 1.0.0</a>
+</p>
+
+<div id="toastStack" aria-live="polite" aria-atomic="false"></div>
+
+<script>
+/* ============================================================
+   SOM — tudo sintetizado na Web Audio API, sem ficheiros
+   ============================================================ */
+let audioCtx = null;
+let soundOn = true;
+
+function ensureAudio(){
+  if(!soundOn) return null;
+  if(!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return null;
+    try{ audioCtx = new AC(); }catch(e){ return null; }
+  }
+  if(audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+  return audioCtx;
+}
+
+/* Um bip simples: frequência, duração, forma de onda, volume e deslize opcional. */
+function tone(freq, dur, type, vol, slideTo){
+  const ctx = ensureAudio();
+  if(!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.setValueAtTime(freq, ctx.currentTime);
+  if(slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, ctx.currentTime + dur);
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(vol || 0.08, ctx.currentTime + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start(); osc.stop(ctx.currentTime + dur + 0.02);
+}
+
+const SFX = {
+  click(){ tone(420, 0.06, 'triangle', 0.05); },
+  good(){ tone(660, 0.10, 'triangle', 0.07); setTimeout(()=>tone(880, 0.12, 'triangle', 0.06), 80); },
+  bad(){ tone(240, 0.16, 'sawtooth', 0.06, 110); },
+  coin(){ tone(980, 0.07, 'square', 0.045); setTimeout(()=>tone(1320, 0.10, 'square', 0.04), 60); },
+  countdown(){ tone(520, 0.12, 'sine', 0.07); },
+  start(){ tone(680, 0.16, 'sine', 0.08, 1040); },
+  finish(){ [523,659,784,1047].forEach((f,i)=> setTimeout(()=>tone(f, 0.20, 'triangle', 0.06), i*110)); },
+  payday(){ [660,880,1100].forEach((f,i)=> setTimeout(()=>tone(f, 0.18, 'sine', 0.07), i*90)); }
+};
+
+/* ============================================================
+   TOASTS
+   ============================================================ */
+function showToast(icon, title, body, kind){
+  const stack = document.getElementById('toastStack');
+  if(!stack) return;
+  const el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' ' + kind : '');
+  el.innerHTML = '<span class="toast-ico" aria-hidden="true">' + icon + '</span>' +
+    '<span><span class="toast-tt">' + title + '</span>' +
+    (body ? '<div class="toast-bd">' + body + '</div>' : '') + '</span>';
+  stack.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 240);
+  }, 3000);
+  while(stack.children.length > 3) stack.firstChild.remove();
+}
+
+function prefersReducedMotion(){
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/* ============================================================
+   DADOS DO JOGO
+   ============================================================ */
+const JOBS = [
+  { id:'estagio', icon:'🌱', title:'Estágio Profissional Apoiado', salary:650, zoneLabel:'Centro da Cidade',
+    desc:'Primeira entrada no mercado de trabalho, com apoio e acompanhamento próximo.' },
+  { id:'loja', icon:'🛍️', title:'Assistente de Loja', salary:900, zoneLabel:'Zona Comercial a Norte',
+    desc:'Trabalho a tempo inteiro numa loja, horário fixo, ordenado um pouco acima do mínimo.' },
+  { id:'tecnico', icon:'📊', title:'Técnico/a Administrativo/a', salary:1100, zoneLabel:'Parque de Escritórios a Sul',
+    desc:'Trabalho de escritório, mais exigente, mas com melhor ordenado.' },
+];
+
+/* Zonas de residência reais da área de Lisboa, ordenadas da mais barata para
+   a mais cara. Cada uma tem a sua própria renda e o seu próprio custo de
+   transporte (usado no dia 4) — nem sempre andam juntos: Cascais, por
+   exemplo, é das zonas mais caras e ainda assim fica longe do trabalho. */
+const ZONES = [
+  { id:'setubal', icon:'🚆', label:'Setúbal', rentMult:0.60, rentTier:'Renda muito baixa',
+    desc:'Cidade a sul do rio, fora da área metropolitana mais cara. Renda muito baixa, mas exige comboio ou ferry todos os dias.',
+    commuteTag:'Deslocação muito longa', transport:{ passe:-70, avulso:-95 } },
+  { id:'amadora', icon:'🚇', label:'Amadora', rentMult:0.75, rentTier:'Renda baixa',
+    desc:'Concelho vizinho de Lisboa, bem servido por comboio e metro. Boa relação entre preço e distância.',
+    commuteTag:'Deslocação média', transport:{ passe:-40, avulso:-55 } },
+  { id:'oeiras', icon:'🏢', label:'Oeiras', rentMult:0.90, rentTier:'Renda média-baixa',
+    desc:'Concelho a oeste, residencial e com muitas empresas — procurado, mas ainda mais em conta do que o centro de Lisboa.',
+    commuteTag:'Deslocação média', transport:{ passe:-35, avulso:-48 } },
+  { id:'alvalade', icon:'🏘️', label:'Alvalade', rentMult:1.05, rentTier:'Renda média',
+    desc:'Bairro residencial tranquilo dentro de Lisboa, bem servido por metro.',
+    commuteTag:'Deslocação curta', transport:{ passe:-22, avulso:-32 } },
+  { id:'santos', icon:'🌊', label:'Santos', rentMult:1.20, rentTier:'Renda média-alta',
+    desc:'Bairro ribeirinho perto do centro, cada vez mais procurado — e por isso mais caro.',
+    commuteTag:'Deslocação curta', transport:{ passe:-15, avulso:-22 } },
+  { id:'baixa', icon:'🏛️', label:'Lisboa — Baixa/Chiado', rentMult:1.35, rentTier:'Renda alta',
+    desc:'Mesmo no centro histórico de Lisboa. Caro, mas quase tudo fica a pé de distância.',
+    commuteTag:'Deslocação muito curta', transport:{ passe:-10, avulso:-15 } },
+  { id:'cascais', icon:'⛵', label:'Cascais', rentMult:1.50, rentTier:'Renda muito alta',
+    desc:'Vila costeira fora de Lisboa, procurada pela qualidade de vida — uma das rendas mais altas da região, e ainda por cima longe do trabalho.',
+    commuteTag:'Deslocação longa', transport:{ passe:-50, avulso:-68 } },
+];
+
+const HOUSING = [
+  { id:'quarto', icon:'🛏️', title:'Quarto em Casa Partilhada', rent:280,
+    desc:'Divides a casa com outras pessoas. A opção mais barata, com menos privacidade.' },
+  { id:'t1', icon:'🏠', title:'Apartamento T1 a Meias', rent:400,
+    desc:'Vives com um(a) amigo(a) e dividem as despesas da casa.' },
+  { id:'estudio', icon:'🔑', title:'Estúdio Sozinho/a', rent:550,
+    desc:'Vives sozinho/a, com total independência — mas custa bem mais.' },
+];
+
+/* Cada dia: type 'expense' (custos do dia-a-dia), 'choice' (decisão real),
+   ou 'info' (dia calmo, só uma dica — nem todos os dias há gastos).
+   O campo opcional 'wb' força um efeito de bem-estar; sem ele, o jogo
+   deduz um valor razoável a partir do tipo de dia (ver inferWellbeing). */
+const DAY_CONTENT = {
+  2:{ type:'choice', icon:'🛒', eyebrow:'Compras da semana', title:'É preciso ir às compras',
+      prompt:'A despensa está vazia. Onde fazes a compra da semana?',
+      options:[
+        { label:'Supermercado maior, um pouco mais longe', sub:'Preços mais baixos', delta:-35,
+          tip:'Comparar preços e planear a compra é uma das formas mais simples de poupar todos os meses.' },
+        { label:'Loja de conveniência ao lado de casa', sub:'Mais rápido, mais caro', delta:-55,
+          tip:'A conveniência tem um preço — lojas pequenas cobram mais pelos mesmos produtos.' },
+      ]},
+  3:{ type:'choice', icon:'🎉', eyebrow:'Convite', title:'Os amigos convidam-te para sair',
+      prompt:'É quinta-feira e um grupo de amigos vai jantar fora e depois a um bar. Vais?',
+      options:[
+        { label:'Vou! Jantar e umas bebidas', sub:'Uma noite divertida', delta:-30, wb:7,
+          tip:'Sair de vez em quando faz parte da vida — o importante é que caiba no que sobra depois das contas fixas.' },
+        { label:'Fico em casa, cozinho algo simples', sub:'Poupas para o resto do mês', delta:0, wb:-3,
+          tip:'Dizer que não a um convite não é um fracasso — é só uma escolha, e todas as escolhas têm um custo de oportunidade.' },
+      ]},
+  5:{ type:'info', icon:'💡', eyebrow:'Dica do dia', title:'Um dia calmo',
+      prompt:'Hoje não há despesas nem convites. Boa altura para olhar para o saldo e planear o resto do mês.',
+      tip:'Uma regra simples para começar: tenta dividir o que ganhas em cerca de 50% para o essencial (casa, contas, comida), 30% para o que te dá prazer, e 20% para poupar.' },
+  6:{ type:'expense', icon:'🧾', eyebrow:'Conta fixa', title:'Chegou a conta da água e da luz',
+      prompt:'É uma despesa obrigatória deste mês. Como preferes tratar dela?',
+      options:[
+        { label:'Pagar tudo agora', sub:'Resolvido de imediato', delta:-45, wb:2,
+          tip:'Pagar as contas assim que chegam evita esquecimentos, juros e cortes de serviço.' },
+        { label:'Aderir a um plano de pagamento faseado', sub:'Paga-se um pouco mais no total', delta:-50, wb:-1,
+          tip:'Facilitar o pagamento tem, quase sempre, um custo extra — mesmo que pareça mais confortável no momento.' },
+      ]},
+  8:{ type:'choice', icon:'👕', eyebrow:'Tentação', title:'Saldos numa loja de roupa',
+      prompt:'Vês uma peça de roupa em saldo que gostavas de ter, mas não precisas mesmo dela.',
+      options:[
+        { label:'Comprar — está barata e gosto muito', sub:'Um capricho ocasional', delta:-40, wb:5,
+          tip:'Um capricho de vez em quando é normal — o problema é quando "só desta vez" acontece todas as semanas.' },
+        { label:'Não comprar, guardar para outra altura', sub:'Fica no orçamento', delta:0, wb:-2,
+          tip:'Perguntar "preciso mesmo disto ou só me apetece agora?" é um dos hábitos mais úteis para gerir dinheiro.' },
+      ]},
+  9:{ type:'info', icon:'☕', eyebrow:'Dica do dia', title:'Mais um dia tranquilo',
+      prompt:'Sem despesas hoje. É um bom momento para pensares em pequenas poupanças do dia a dia.',
+      tip:'Pequenas despesas repetidas (um café todos os dias, uma app que já não usas) somam-se ao longo do mês mais do que parece.' },
+  10:{ type:'choice', icon:'🎤', eyebrow:'Convite', title:'Um amigo tem concerto',
+      prompt:'Um amigo teu vai atuar num concerto pequeno e convida-te. O bilhete não é caro.',
+      options:[
+        { label:'Ir apoiar o teu amigo', sub:'Bilhete simples', delta:-25, wb:7,
+          tip:'Apoiar quem gostas também é um investimento — só precisa de caber no que planeaste gastar em lazer.' },
+        { label:'Não ir desta vez', sub:'Poupas o valor do bilhete', delta:0, wb:-4,
+          tip:'Está tudo bem em recusar um convite de vez em quando, especialmente se já saíste várias vezes este mês.' },
+      ]},
+  11:{ type:'choice', icon:'🎁', eyebrow:'Compromisso social', title:'Aniversário de um amigo',
+      prompt:'É o aniversário de um amigo próximo. Que prenda escolhes?',
+      options:[
+        { label:'Prenda simples e com significado', sub:'Um gesto, sem exagero', delta:-15, wb:4,
+          tip:'Uma prenda não precisa de ser cara para ter valor — o gesto costuma pesar mais do que o preço.' },
+        { label:'Prenda mais generosa', sub:'Queres mesmo mimá-lo/a', delta:-35, wb:5,
+          tip:'Está tudo bem em ser generoso/a de vez em quando — só vale a pena ter noção do impacto no que resta do mês.' },
+      ]},
+  13:{ type:'choice', icon:'🛒', eyebrow:'Compras da semana', title:'Mais uma ida às compras',
+      prompt:'Falta comida em casa outra vez.',
+      options:[
+        { label:'Aproveitar promoções desta semana', sub:'Um pouco de esforço, boa poupança', delta:-30,
+          tip:'Comprar o que está em promoção, em vez do que se apetece, é uma forma simples de baixar a fatura da comida.' },
+        { label:'Comprar rápido, sem comparar', sub:'Menos esforço, mais caro', delta:-50,
+          tip:'A pressa nas compras costuma custar dinheiro — vale a pena reservar uns minutos extra para comparar.' },
+      ]},
+  14:{ type:'choice', icon:'📵', eyebrow:'Imprevisto', title:'O ecrã do telemóvel racha',
+      prompt:'O telemóvel caiu e o ecrã ficou rachado. Ainda funciona, mas não está bonito.',
+      options:[
+        { label:'Consertar já', sub:'Resolve o problema agora', delta:-60, flag:'phoneFixed', wb:3,
+          tip:'Resolver um imprevisto pequeno cedo evita, muitas vezes, que se transforme num problema maior e mais caro.' },
+        { label:'Continuar a usar assim, por agora', sub:'Poupas — para já', delta:0, wb:-4,
+          tip:'Adiar um conserto poupa dinheiro no imediato, mas às vezes o problema agrava-se e acaba por sair mais caro.' },
+      ]},
+  15:{ type:'info', icon:'📆', eyebrow:'Ponto de situação', title:'Estás a meio do mês',
+      prompt:'Vale a pena parar um momento e olhar para o saldo atual antes de continuar.',
+      tip:'Se o saldo já está apertado a meio do mês, é sinal para travar um pouco nos gastos que não são essenciais nos próximos dias.' },
+  16:{ type:'choice', icon:'🏖️', eyebrow:'Convite', title:'Fim de semana fora com amigos',
+      prompt:'Um grupo de amigos organiza um fim de semana fora. É divertido, mas não é barato.',
+      options:[
+        { label:'Ir — vale bem a pena', sub:'Transporte, estadia e comes e bebes', delta:-80, wb:12,
+          tip:'Uma despesa maior de lazer pode fazer todo o sentido — desde que seja uma escolha consciente, não um impulso.' },
+        { label:'Não ir desta vez', sub:'É uma despesa grande para este mês', delta:0, wb:-6,
+          tip:'Nem todos os convites cabem no mesmo mês — há sempre outra oportunidade mais à frente.' },
+      ]},
+  17:{ type:'info', icon:'🌤️', eyebrow:'Dica do dia', title:'Sem despesas hoje',
+      prompt:'Um dia sem gastos. Boa altura para verificares se há subscrições que já não usas.',
+      tip:'Subscrições esquecidas (streaming, apps, ginásios) continuam a ser cobradas mesmo quando já não se usam — vale a pena rever de vez em quando.' },
+  18:{ type:'choice', icon:'🛒', eyebrow:'Compras da semana', title:'Compra da semana',
+      prompt:'Mais uma vez, é preciso repor a despensa.',
+      options:[
+        { label:'Cozinhar em casa esta semana', sub:'Mais barato do que comer fora', delta:-33,
+          tip:'Cozinhar em casa é normalmente uma das formas mais eficazes de baixar a despesa mensal com comida.' },
+        { label:'Comprar mais pratos prontos', sub:'Mais prático, mais caro', delta:-52,
+          tip:'A comodidade de refeições prontas tem um preço — muitas vezes bem mais alto do que cozinhar do zero.' },
+      ]},
+  19:{ type:'choice', icon:'🎬', eyebrow:'Subscrição', title:'A subscrição de streaming renovou-se',
+      prompt:'O serviço de streaming que subscreveste renova-se automaticamente este mês.',
+      options:[
+        { label:'Manter a subscrição', sub:'Continuas a usar regularmente', delta:-10, wb:2,
+          tip:'Manter uma subscrição que se usa de facto é um gasto perfeitamente razoável.' },
+        { label:'Cancelar — quase não uso', sub:'Poupas a partir de agora', delta:0, wb:-1,
+          tip:'Cancelar o que já não se usa é uma das poupanças mais fáceis de fazer, e uma das mais esquecidas.' },
+      ]},
+  20:{ type:'expense', icon:'🏢', eyebrow:'Conta fixa', title:'Despesa extra da casa',
+      prompt:'Chega uma despesa de condomínio ou de manutenção da casa.',
+      options:[
+        { label:'Pagar a despesa', sub:'Faz parte de viver em comunidade', delta:-30,
+          tip:'Além da renda, viver numa casa costuma trazer pequenas despesas extra — vale a pena contar sempre com uma margem para elas.' },
+      ]},
+  21:{ type:'choice', icon:'🏋️', eyebrow:'Escolha', title:'Inscrição no ginásio',
+      prompt:'Um ginásio perto de casa tem uma promoção de inscrição este mês.',
+      options:[
+        { label:'Inscrever-me', sub:'Mensalidade a partir de agora', delta:-35, wb:6,
+          tip:'Se vais mesmo usar, pode valer a pena — mas ginásios são das subscrições mais comuns a ficar esquecidas.' },
+        { label:'Treinar em casa ou ao ar livre', sub:'Gratuito', delta:0, wb:3,
+          tip:'Cuidar da saúde não tem de custar dinheiro — caminhar, correr ou treinar em casa são alternativas válidas.' },
+      ]},
+  22:{ type:'info', icon:'🌙', eyebrow:'Dica do dia', title:'Dia tranquilo',
+      prompt:'Sem despesas hoje. Falta cada vez menos para o fim do mês.',
+      tip:'Chegar ao fim do mês com uma pequena margem, mesmo pequena, é o que permite lidar melhor com imprevistos no mês seguinte.' },
+  23:{ type:'choice', icon:'🛒', eyebrow:'Compras da semana', title:'Mais uma compra semanal',
+      prompt:'É dia de repor a despensa outra vez.',
+      options:[
+        { label:'Aproveitar o que já está em casa', sub:'Compra pequena, para completar', delta:-25,
+          tip:'Planear as refeições à volta do que já tens em casa reduz desperdício e poupa dinheiro.' },
+        { label:'Compra grande, "só para garantir"', sub:'Provavelmente sobra comida', delta:-48,
+          tip:'Comprar a mais "para garantir" muitas vezes só resulta em comida desperdiçada — e dinheiro com ela.' },
+      ]},
+  24:{ type:'choice', icon:'🎉', eyebrow:'Convite', title:'Última saída do mês',
+      prompt:'Os amigos convidam-te para uma última saída antes do fim do mês.',
+      options:[
+        { label:'Ir — mas com orçamento definido', sub:'Decides um limite antes de sair', delta:-35, wb:8,
+          tip:'Definir um limite antes de sair ajuda a aproveitar a noite sem surpresas desagradáveis no dia seguinte.' },
+        { label:'Ficar em casa desta vez', sub:'Guarda o que resta do mês', delta:0, wb:-3,
+          tip:'Se já saíste várias vezes este mês, recusar desta vez pode ser a escolha mais confortável para o teu saldo.' },
+      ]},
+  25:{ type:'choice', icon:'⏰', eyebrow:'Oportunidade', title:'Horas extra no trabalho',
+      prompt:'O teu trabalho propõe-te horas extra esta semana, bem pagas.',
+      options:[
+        { label:'Aceitar as horas extra', sub:'Mais cansaço, mais dinheiro', delta:110, wb:-9,
+          tip:'Trocar tempo e descanso por mais rendimento pode fazer sentido de vez em quando — mas não deve virar rotina sem pensar no desgaste.' },
+        { label:'Recusar, preciso descansar', sub:'Preservas o teu tempo livre', delta:0, wb:5,
+          tip:'Nem sempre vale a pena trocar descanso por dinheiro extra — o bem-estar também importa na equação.' },
+      ]},
+  26:{ type:'choice', icon:'🔧', eyebrow:'Imprevisto', title:'Pequeno imprevisto',
+      prompt:'Algo simples avaria e precisa de atenção esta semana.',
+      options:[
+        { label:'Resolver imediatamente', sub:'Um pequeno conserto', delta:-40, wb:2,
+          tip:'Ter uma pequena reserva para imprevistos evita que estes apanhem o orçamento de surpresa.' },
+        { label:'Desenrascar por agora', sub:'Solução temporária, mais barata', delta:-15, wb:-3,
+          tip:'Soluções temporárias ajudam a aguentar o mês, mas normalmente só adiam a despesa em vez de a eliminarem.' },
+      ]},
+  27:{ type:'info', icon:'🍃', eyebrow:'Dica do dia', title:'Reta final',
+      prompt:'Faltam só uns dias para o fim do mês. Sem despesas hoje.',
+      tip:'Vale a pena guardar uma pequena margem para os últimos dias do mês, quando imprevistos de última hora são mais comuns.' },
+  28:{ type:'choice', icon:'🛒', eyebrow:'Compras da semana', title:'Última compra do mês',
+      prompt:'É a última ida ao supermercado antes do fim do mês.',
+      options:[
+        { label:'Compra ajustada ao que resta', sub:'Só o essencial', delta:-28,
+          tip:'Ajustar a compra ao saldo que resta é um dos hábitos mais simples de uma boa gestão mensal.' },
+        { label:'Compra normal, sem pensar muito', sub:'Como sempre', delta:-45,
+          tip:'Manter o mesmo padrão de despesa até ao último dia, sem olhar ao saldo, é como muitos meses acabam "no vermelho".' },
+      ]},
+  29:{ type:'choice', icon:'🌗', eyebrow:'Reflexão final', title:'Já quase no fim do mês',
+      prompt:'Falta um dia para o novo mês. O que fazes com o que ainda tens?',
+      options:[
+        { label:'Guardar tudo o que resta', sub:'Começa o próximo mês com almofada', delta:0, wb:4,
+          tip:'Terminar o mês com uma margem, mesmo pequena, é o que permite lidar com imprevistos sem entrar em dívida.' },
+        { label:'Um pequeno mimo de fim de mês', sub:'Celebrar por teres chegado até aqui', delta:-25, wb:6,
+          tip:'Celebrar objetivos cumpridos, com moderação, também faz parte de uma relação saudável com o dinheiro.' },
+      ]},
+  30:{ type:'choice', icon:'🌅', eyebrow:'Último dia', title:'Chegaste ao dia 30',
+      prompt:'É o último dia do mês. Antes de fechar as contas, há uma decisão final a tomar.',
+      options:[
+        { label:'Separar o que sobrou numa poupança', sub:'Fica fora da conta do dia a dia', delta:0, wb:5,
+          tip:'Separar o que sobra para uma conta à parte é o truque mais simples para não gastar aquilo que já tinhas decidido poupar.' },
+        { label:'Deixar tudo na conta à ordem', sub:'Mais fácil de gastar sem dar por isso', delta:0, wb:-1,
+          tip:'Dinheiro que fica à vista na conta tende a ser gasto — "longe da vista" é uma estratégia de poupança surpreendentemente eficaz.' },
+      ]},
+};
+
+/* consequência ligada ao dia 14: se o telemóvel não foi arranjado, agrava-se no dia 26 */
+const PHONE_BREAKS_FURTHER = { type:'expense', icon:'📵', eyebrow:'Imprevisto', title:'O telemóvel avariou de vez',
+  prompt:'O ecrã rachado piorou e o telemóvel deixou de funcionar bem. Já não há como adiar.',
+  options:[
+    { label:'Consertar (ou substituir) agora', sub:'Já não dá para esperar mais', delta:-120, wb:-5,
+      tip:'Adiar um problema pequeno pode, por vezes, transformá-lo num problema bem maior e mais caro de resolver.' },
+  ]};
+
+/* ============================================================
+   ESTADO DO JOGO
+   ============================================================ */
+const TOTAL_DAYS = 30;
+const state = {
+  screen:'welcome',   // welcome | job | zone | housing | day1 | day | summary
+  day:1,
+  money:0,
+  wellbeing:70,
+  job:null,
+  zone:null,
+  housing:null,
+  flags:{ phoneFixed:null },
+  log:[],              // { day, label, delta }
+  balanceHistory:[],   // saldo ao fim de cada dia
+  warnedNegative:false,   // para os avisos não repetirem todos os dias
+  warnedWellbeing:false,
+  daysInDebt:0,
+  stats:{ outings:0, refusals:0, miniPlayed:0, groceryList:0, billsOnTime:0, lateFees:0 }
+};
+
+/* Limpeza do minijogo activo — pára loops e listeners quando se sai do dia.
+   Sem isto, um minijogo deixa o seu requestAnimationFrame a correr por baixo
+   do seguinte (erro que já custou caro no jogo grande). */
+let activeCardCleanup = null;
+function runCleanup(){
+  if(typeof activeCardCleanup === 'function'){
+    try{ activeCardCleanup(); }catch(e){}
+  }
+  activeCardCleanup = null;
+}
+
+function fmt(n){
+  const sign = n < 0 ? '-' : (n > 0 ? '+' : '');
+  return sign + '€' + Math.abs(Math.round(n));
+}
+function fmtPlain(n){ return '€' + Math.round(n); }
+
+/* ============================================================
+   BEM-ESTAR
+   Segundo recurso. Ganhos contam 70%, perdas contam 120% —
+   o bem-estar custa mais a construir do que a perder, tal como
+   na vida real.
+   ============================================================ */
+function applyWellbeing(delta){
+  if(!delta) return 0;
+  const scaled = delta > 0 ? delta * 0.7 : delta * 1.2;
+  const before = state.wellbeing;
+  state.wellbeing = Math.max(0, Math.min(100, state.wellbeing + scaled));
+  return Math.round(state.wellbeing - before);
+}
+
+/* Quando uma opção não declara 'wb', deduz-se um valor a partir do tipo de
+   dia. Evita ter de anotar à mão todos os dias e mantém-se coerente. */
+function inferWellbeing(content, opt){
+  if(opt && typeof opt.wb === 'number') return opt.wb;
+  if(!content) return 0;
+  if(content.type === 'info') return 2;
+  const eb = content.eyebrow || '';
+  const d = opt ? opt.delta : 0;
+  if(eb === 'Convite') return d < 0 ? 6 : -3;
+  if(eb === 'Tentação') return d < 0 ? 4 : -2;
+  if(eb === 'Imprevisto') return d < 0 ? 1 : -3;
+  if(eb === 'Compras da semana') return 0;
+  if(eb === 'Conta fixa') return -1;
+  return 0;
+}
+
+function wellbeingVerdict(w){
+  if(w >= 75) return { label:'Mês bem vivido', cls:'good',
+    tip:'Não te privaste de tudo: saíste, viste pessoas, fizeste coisas de que gostas. Isto conta — um orçamento que só funciona à custa de nunca fazer nada acaba por ser abandonado ao segundo mês. Falta só garantir que o saldo aguenta o mesmo ritmo.' };
+  if(w >= 45) return { label:'Equilíbrio razoável', cls:'warn',
+    tip:'O mês pesou um pouco, mas aguentaste. Vale a pena reservar de propósito uma pequena verba para lazer — gastar zero em tudo o que dá prazer raramente se aguenta mês após mês.' };
+  return { label:'Mês desgastante', cls:'bad',
+    tip:'O mês custou-te. Um orçamento que corta tudo o que dá prazer é o tipo de plano que se abandona ao segundo mês — guardar uma pequena fatia para ti faz parte de gerir bem.' };
+}
+
+/* O caso mais instrutivo de todos: acabar mal nos dois ao mesmo tempo.
+   Merece uma leitura própria, em vez de dois diagnósticos soltos. */
+function combinedNote(balance, w, daysInDebt){
+  if(balance < 0 && w < 45)
+    return '<b>Os dois ao mesmo tempo:</b> acabaste o mês endividado <i>e</i> desgastado — e não é coincidência. Passaste ' + daysInDebt + ' dias com o saldo negativo, e viver assim pesa todos os dias. Gastar mais não comprou bem-estar: só adiou a conta.';
+  if(balance < 0 && w >= 75)
+    return '<b>Atenção ao contraste:</b> o mês soube-te bem, mas foi pago com dinheiro que não tinhas. Este é o padrão mais comum em quem entra em dívida — nenhuma das escolhas pareceu grave no momento.';
+  if(balance >= 220 && w < 45)
+    return '<b>Atenção ao contraste:</b> poupaste bem, mas à custa de recusar quase tudo. Vale a pena decidir de antemão quanto podes gastar contigo — assim poupas na mesma, sem que o mês custe tanto.';
+  return '';
+}
+
+/* ============================================================
+   HUD
+   ============================================================ */
+function updateHud(bump){
+  const moneyEl = document.getElementById('moneyValue');
+  const pill = document.getElementById('moneyPill');
+  moneyEl.textContent = fmtPlain(state.money);
+  pill.classList.toggle('neg', state.money < 0);
+  if(bump && !prefersReducedMotion()){
+    pill.classList.remove('bump');
+    void pill.offsetWidth;
+    pill.classList.add('bump');
+  }
+
+  const inGame = ['day1','day','summary'].indexOf(state.screen) !== -1;
+  const wbRow = document.getElementById('wbRow');
+  wbRow.hidden = !inGame;
+  const wbFill = document.getElementById('wbFill');
+  const wbNum = document.getElementById('wbValue');
+  const w = Math.round(state.wellbeing);
+  wbFill.style.width = w + '%';
+  wbFill.className = 'wb-fill' + (w < 35 ? ' low' : (w < 60 ? ' mid' : ''));
+  wbNum.textContent = w;
+
+  document.body.classList.toggle('playing',
+    state.screen !== 'welcome' && state.screen !== 'summary');
+
+  const dayEl = document.getElementById('hudDay');
+  if(state.screen === 'welcome') dayEl.textContent = 'Antes de começar';
+  else if(state.screen === 'job' || state.screen === 'zone' || state.screen === 'housing') dayEl.textContent = 'A preparar o mês';
+  else if(state.screen === 'summary') dayEl.textContent = 'Mês terminado';
+  else dayEl.textContent = 'Dia ' + state.day + ' de ' + TOTAL_DAYS;
+}
+
+function render(){
+  runCleanup();
+  updateHud();
+  const stage = document.getElementById('stage');
+  stage.innerHTML = '';
+  /* 'welcome' não desenha nada: o ecrã inicial é o overlay do menu */
+  if(state.screen === 'job') stage.appendChild(buildJobPicker());
+  else if(state.screen === 'zone') stage.appendChild(buildZonePicker());
+  else if(state.screen === 'housing') stage.appendChild(buildHousingPicker());
+  else if(state.screen === 'day1') stage.appendChild(buildDay1Recap());
+  else if(state.screen === 'day') stage.appendChild(buildDayCard());
+  else if(state.screen === 'summary') stage.appendChild(buildSummary());
+  window.scrollTo(0,0);
+}
+
+/* Avançar um dia — um único sítio, para o histórico ficar sempre alinhado. */
+function advanceDay(){
+  state.balanceHistory.push(state.money);
+  /* Estar no vermelho não é só um número: enquanto durar, desgasta.
+     É isto que impede a estratégia "gasto tudo e sinto-me ótimo". */
+  if(state.money < 0){
+    state.daysInDebt++;
+    applyWellbeing(-3);
+  }
+  if(state.day >= TOTAL_DAYS){
+    state.screen = 'summary';
+    SFX.finish();
+  } else {
+    state.day++;
+  }
+  render();
+}
+
+/* ============================================================
+   ECRÃ: ESCOLHER EMPREGO
+   ============================================================ */
+function buildJobPicker(){
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="card-icon" aria-hidden="true">💼</div>
+    <div class="card-eyebrow">Passo 1</div>
+    <h1 class="card-title">Qual é o teu trabalho?</h1>
+    <p class="card-prompt">Este vai ser o teu ordenado fixo, todos os meses.</p>
+  `;
+  const grid = document.createElement('div');
+  grid.className = 'option-grid';
+  JOBS.forEach(job => {
+    const btn = document.createElement('button');
+    btn.className = 'option-card';
+    btn.innerHTML = `
+      <div class="option-head">
+        <span class="option-icon" aria-hidden="true">${job.icon}</span>
+        <span class="option-title">${job.title}</span>
+        <span class="option-figure">${fmtPlain(job.salary)}/mês</span>
+      </div>
+      <p class="option-desc">${job.desc}</p>
+      <p class="option-desc" style="margin-top:6px;"><b>📍 Local de trabalho:</b> ${job.zoneLabel}</p>
+    `;
+    btn.addEventListener('click', () => {
+      SFX.click();
+      state.job = job;
+      state.screen = 'zone';
+      render();
+    });
+    grid.appendChild(btn);
+  });
+  card.appendChild(grid);
+  return card;
+}
+
+/* ============================================================
+   ECRÃ: ESCOLHER ZONA
+   ============================================================ */
+function buildZonePicker(){
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="card-icon" aria-hidden="true">📍</div>
+    <div class="card-eyebrow">Passo 2</div>
+    <h1 class="card-title">Onde na área de Lisboa vais viver?</h1>
+    <p class="card-prompt">Trabalhas em <b>${state.job.zoneLabel}</b>. As zonas abaixo estão ordenadas da mais barata para a mais
+      cara — mas repara que nem sempre a mais barata é a que fica mais perto do trabalho.</p>
+  `;
+  const grid = document.createElement('div');
+  grid.className = 'option-grid';
+  ZONES.forEach((zone, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'option-card';
+    btn.innerHTML = `
+      <div class="option-head">
+        <span class="option-icon" aria-hidden="true">${zone.icon}</span>
+        <span class="option-title">${i + 1}. ${zone.label}</span>
+        <span class="option-figure">${zone.rentTier}</span>
+      </div>
+      <p class="option-desc">${zone.desc}</p>
+      <p class="option-desc" style="margin-top:6px;"><b>🚌 ${zone.commuteTag}</b> — transporte no dia 4 vai custar entre ${fmt(zone.transport.passe)} e ${fmt(zone.transport.avulso)}.</p>
+    `;
+    btn.addEventListener('click', () => {
+      SFX.click();
+      state.zone = zone;
+      state.screen = 'housing';
+      render();
+    });
+    grid.appendChild(btn);
+  });
+  card.appendChild(grid);
+  return card;
+}
+
+/* ============================================================
+   ECRÃ: ESCOLHER CASA
+   ============================================================ */
+function buildHousingPicker(){
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="card-icon" aria-hidden="true">🏡</div>
+    <div class="card-eyebrow">Passo 3</div>
+    <h1 class="card-title">Onde vais viver?</h1>
+    <p class="card-prompt">Escolheste viver em "${state.zone.label}" — as rendas abaixo já têm esse ajuste. A renda sai logo no dia 1, antes de mais nada.</p>
+  `;
+  const grid = document.createElement('div');
+  grid.className = 'option-grid';
+  HOUSING.forEach(h => {
+    const adjustedRent = Math.round(h.rent * state.zone.rentMult);
+    /* Regra prática muito usada: a renda não devia passar de ~1/3 do ordenado.
+       Não bloqueamos a escolha — mas o jogador tem de a ver antes de decidir. */
+    const share = adjustedRent / state.job.salary;
+    let flag = '';
+    if(share > 0.55) flag = `<p class="option-desc" style="margin-top:6px;color:var(--bad);"><b>⚠️ Renda insustentável</b> — leva ${Math.round(share*100)}% do teu ordenado. Vais começar o mês praticamente sem nada.</p>`;
+    else if(share > 0.38) flag = `<p class="option-desc" style="margin-top:6px;color:var(--warn);"><b>⚠️ Renda pesada</b> — leva ${Math.round(share*100)}% do teu ordenado. A regra prática aponta para um máximo de cerca de 1/3.</p>`;
+    else flag = `<p class="option-desc" style="margin-top:6px;color:var(--good);"><b>✓ Renda confortável</b> — leva ${Math.round(share*100)}% do teu ordenado.</p>`;
+    const btn = document.createElement('button');
+    btn.className = 'option-card';
+    btn.innerHTML = `
+      <div class="option-head">
+        <span class="option-icon" aria-hidden="true">${h.icon}</span>
+        <span class="option-title">${h.title}</span>
+        <span class="option-figure">${fmtPlain(adjustedRent)}/mês</span>
+      </div>
+      <p class="option-desc">${h.desc}</p>
+      ${flag}
+    `;
+    btn.addEventListener('click', () => {
+      state.housing = h;
+      state.housing.adjustedRent = adjustedRent;
+      state.money = 50 + state.job.salary - adjustedRent;
+      state.log.push({ day:1, label:'Ordenado (' + state.job.title + ')', delta: state.job.salary });
+      state.log.push({ day:1, label:'Renda (' + state.housing.title + ', ' + state.zone.label + ')', delta: -adjustedRent });
+      /* o quarto partilhado custa menos mas pesa um pouco na privacidade;
+         o estúdio sozinho dá conforto a quem o pode pagar */
+      if(h.id === 'quarto') applyWellbeing(-4);
+      if(h.id === 'estudio') applyWellbeing(5);
+      state.screen = 'day1';
+      SFX.payday();
+      render();
+    });
+    grid.appendChild(btn);
+  });
+  card.appendChild(grid);
+  return card;
+}
+
+/* ============================================================
+   ECRÃ: RESUMO DO DIA 1
+   ============================================================ */
+function buildDay1Recap(){
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="card-icon" aria-hidden="true">✅</div>
+    <div class="card-eyebrow">Dia 1</div>
+    <h1 class="card-title">O mês começa</h1>
+    <p class="card-prompt">
+      Entrou o ordenado de <b>${state.job.title}</b>: <b>${fmt(state.job.salary)}</b>.<br>
+      Saiu logo a renda de <b>${state.housing.title}</b> em ${state.zone.label}: <b>${fmt(-state.housing.adjustedRent)}</b>.<br>
+      Como escolheste viver em "${state.zone.label}", a tua ${state.zone.commuteTag.toLowerCase()} vai pesar no dia dos transportes.<br>
+      Começas o mês com <b>${fmtPlain(state.money)}</b> (juntando também uma pequena poupança de €50 que já tinhas).
+    </p>
+    <button class="primary-btn" id="continueBtn">Continuar para o dia 2</button>
+  `;
+  card.querySelector('#continueBtn').addEventListener('click', () => {
+    SFX.click();
+    state.balanceHistory.push(state.money);
+    state.day = 2;
+    state.screen = 'day';
+    render();
+    if(state.money < 60){
+      showToast('⚠️', 'Começas o mês muito apertado',
+        'Depois da renda sobrou-te ' + fmtPlain(state.money) + ' para 29 dias. Vai ser preciso recusar quase tudo.', 'bad');
+    }
+  });
+  return card;
+}
+
+/* ============================================================
+   MINIJOGOS — apresentação, contagem e resultados
+   ============================================================ */
+
+/* Painel de instruções + contagem 3-2-1 antes de o jogo arrancar. */
+function showMiniGameBriefing(host, icon, title, eyebrow, listHtml, onStart){
+  host.innerHTML = `
+    <div class="card-icon" aria-hidden="true">${icon}</div>
+    <div class="card-eyebrow">${eyebrow}</div>
+    <h1 class="card-title">${title}</h1>
+    <div class="mg-brief">
+      <h3>Como se joga</h3>
+      <ul>${listHtml}</ul>
+    </div>
+    <button class="primary-btn" id="mgStartBtn">Estou pronto/a</button>
+  `;
+  host.querySelector('#mgStartBtn').addEventListener('click', () => {
+    SFX.click();
+    runCountdown(host, onStart);
+  });
+}
+
+function runCountdown(host, onDone){
+  host.innerHTML = '<div class="mg-arena" id="mgCountHost"><div class="mg-count" id="mgCount"><span>3</span></div></div>';
+  const el = host.querySelector('#mgCount');
+  let n = 3;
+  SFX.countdown();
+  const timer = setInterval(() => {
+    n--;
+    if(n > 0){
+      el.innerHTML = '<span>' + n + '</span>';
+      SFX.countdown();
+    } else {
+      clearInterval(timer);
+      el.innerHTML = '<span>Vai!</span>';
+      SFX.start();
+      setTimeout(() => { if(host.isConnected) onDone(); }, 520);
+    }
+  }, 760);
+  /* se o jogador sair a meio da contagem, o intervalo tem de morrer */
+  activeCardCleanup = () => clearInterval(timer);
+}
+
+function miniGameResults(icon, title, stats, verdict){
+  const cells = stats.map(s => '<div class="mg-stat"><div class="n">' + s.n + '</div><div class="l">' + s.l + '</div></div>').join('');
+  return '<div class="mg-results">' +
+    '<h3>' + icon + ' ' + title + '</h3>' +
+    '<div class="mg-stat-grid">' + cells + '</div>' +
+    (verdict ? '<p class="option-desc" style="margin-top:10px;">' + verdict + '</p>' : '') +
+    '</div>';
+}
+
+/* ------------------------------------------------------------
+   MINIJOGO 1 (dia 7) — A compra da semana
+   Apanhar os cinco produtos da lista e evitar as compras por
+   impulso que caem pelo meio. O custo base é fixo; o impulso é
+   que faz a conta subir.
+   ------------------------------------------------------------ */
+const GROCERY_BASE_COST = 28;
+const GROCERY_IMPULSE_CAP = 42;
+const GROCERY_SECONDS = 22;
+const LIST_ITEMS = [
+  { emoji:'🥛', name:'Leite' },
+  { emoji:'🍞', name:'Pão' },
+  { emoji:'🥦', name:'Legumes' },
+  { emoji:'🥚', name:'Ovos' },
+  { emoji:'🍎', name:'Fruta' },
+];
+const IMPULSE_ITEMS = [
+  { emoji:'🍪', name:'Bolachas', cost:5 },
+  { emoji:'🥤', name:'Refrigerante', cost:4 },
+  { emoji:'🍫', name:'Chocolate', cost:4 },
+  { emoji:'🍟', name:'Snacks', cost:6 },
+  { emoji:'🧁', name:'Queque', cost:5 },
+];
+
+function playSupermarketGame(host, onDone){
+  const caught = {};
+  let impulseCost = 0, impulseCount = 0, finished = false;
+  let timeLeft = GROCERY_SECONDS;
+
+  host.innerHTML = `
+    <div class="mg-bar">
+      <span class="mg-score" id="smScore">Lista: 0/5</span>
+      <span class="mg-timer" id="smTimer">${GROCERY_SECONDS}s</span>
+    </div>
+    <div class="mg-arena" id="smArena">
+      <div class="sm-sky"></div>
+      <div class="sm-shelf" style="top:92px;"></div>
+      <div class="sm-shelf" style="top:168px;"></div>
+      <div class="sm-floor"></div>
+      <div class="sm-list" id="smList"></div>
+      <div class="sm-cart" id="smCart">🛒</div>
+      <div class="mg-flash" id="smFlash"></div>
+    </div>
+    <p class="option-desc" style="margin-top:8px;text-align:center;">Setas ou A/D para mover · ou arrasta o dedo na área de jogo</p>
+  `;
+
+  const arena = host.querySelector('#smArena');
+  const cart = host.querySelector('#smCart');
+  const listEl = host.querySelector('#smList');
+  const scoreEl = host.querySelector('#smScore');
+  const timerEl = host.querySelector('#smTimer');
+  const flashEl = host.querySelector('#smFlash');
+
+  function drawList(){
+    listEl.innerHTML = LIST_ITEMS.map(it =>
+      '<span class="sm-chip' + (caught[it.name] ? ' done' : '') + '">' + it.emoji + ' ' + it.name + '</span>'
+    ).join('');
+  }
+  drawList();
+
+  const CART_W = 46;
+  let cartX = arena.clientWidth / 2 - CART_W / 2;
+  let keyLeft = false, keyRight = false;
+  const items = [];
+  let spawnTimer = 0, raf = 0, last = 0, running = true;
+
+  function placeCart(){
+    const maxX = Math.max(0, arena.clientWidth - CART_W);
+    cartX = Math.max(0, Math.min(maxX, cartX));
+    cart.style.transform = 'translateX(' + cartX + 'px)';
+  }
+  placeCart();
+
+  function onKeyDown(e){
+    if(e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A'){ keyLeft = true; e.preventDefault(); }
+    if(e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D'){ keyRight = true; e.preventDefault(); }
+  }
+  function onKeyUp(e){
+    if(e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keyLeft = false;
+    if(e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keyRight = false;
+  }
+  function onPointer(e){
+    const rect = arena.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    cartX = x - CART_W / 2;
+    placeCart();
+    if(e.cancelable) e.preventDefault();
+  }
+  let pointerDown = false;
+  function pDown(e){ pointerDown = true; onPointer(e); }
+  function pMove(e){ if(pointerDown) onPointer(e); }
+  function pUp(){ pointerDown = false; }
+
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  arena.addEventListener('mousedown', pDown);
+  arena.addEventListener('mousemove', pMove);
+  window.addEventListener('mouseup', pUp);
+  arena.addEventListener('touchstart', pDown, { passive:false });
+  arena.addEventListener('touchmove', pMove, { passive:false });
+  window.addEventListener('touchend', pUp);
+
+  function pop(text, x, y, color){
+    const el = document.createElement('div');
+    el.className = 'sm-pop';
+    el.textContent = text;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    el.style.color = color;
+    arena.appendChild(el);
+    setTimeout(() => el.remove(), 640);
+  }
+
+  function spawn(){
+    /* dá prioridade ao que ainda falta na lista, mas mistura sempre tentações */
+    const missing = LIST_ITEMS.filter(it => !caught[it.name]);
+    const wantList = missing.length > 0 && Math.random() < 0.58;
+    const src = wantList ? missing[Math.floor(Math.random() * missing.length)]
+                         : IMPULSE_ITEMS[Math.floor(Math.random() * IMPULSE_ITEMS.length)];
+    const el = document.createElement('div');
+    el.className = 'sm-item' + (wantList ? '' : ' impulse');
+    el.textContent = src.emoji;
+    const maxX = Math.max(10, arena.clientWidth - 34);
+    const x = 6 + Math.random() * (maxX - 6);
+    el.style.transform = 'translate(' + x + 'px, -32px)';
+    arena.appendChild(el);
+    items.push({ el, x, y:-32, vy: 118 + Math.random() * 62, isList: wantList, data: src });
+  }
+
+  const startedAt = performance.now();
+
+  function loop(now){
+    if(!running) return;
+    if(!last) last = now;
+    let dt = (now - last) / 1000;
+    last = now;
+    if(dt > 0.05) dt = 0.05;   /* protege contra saltos ao mudar de separador */
+
+    /* teclado */
+    const speed = 330;
+    if(keyLeft) cartX -= speed * dt;
+    if(keyRight) cartX += speed * dt;
+    if(keyLeft || keyRight) placeCart();
+
+    /* spawn */
+    spawnTimer -= dt;
+    if(spawnTimer <= 0){
+      spawn();
+      spawnTimer = 0.52 + Math.random() * 0.34;
+    }
+
+    /* cronómetro */
+    const elapsed = (now - startedAt) / 1000;
+    timeLeft = Math.max(0, GROCERY_SECONDS - elapsed);
+    timerEl.textContent = Math.ceil(timeLeft) + 's';
+    timerEl.classList.toggle('urgent', timeLeft <= 5);
+
+    /* mover e testar colisões */
+    const arenaH = arena.clientHeight;
+    const cartTop = arenaH - 28 - 34;
+    for(let i = items.length - 1; i >= 0; i--){
+      const it = items[i];
+      it.y += it.vy * dt;
+      it.el.style.transform = 'translate(' + it.x + 'px, ' + it.y + 'px)';
+
+      const hitsY = it.y + 26 >= cartTop && it.y <= cartTop + 34;
+      const hitsX = it.x + 26 >= cartX && it.x <= cartX + CART_W;
+      if(hitsY && hitsX){
+        if(it.isList){
+          if(!caught[it.data.name]){
+            caught[it.data.name] = true;
+            drawList();
+            scoreEl.textContent = 'Lista: ' + Object.keys(caught).length + '/5';
+            SFX.good();
+            pop('✓ ' + it.data.name, it.x, cartTop - 6, '#2f7a45');
+          }
+        } else {
+          impulseCount++;
+          impulseCost = Math.min(GROCERY_IMPULSE_CAP, impulseCost + it.data.cost);
+          SFX.bad();
+          pop('-€' + it.data.cost, it.x, cartTop - 6, '#a83232');
+          if(!prefersReducedMotion()){
+            flashEl.classList.remove('hit');
+            void flashEl.offsetWidth;
+            flashEl.classList.add('hit');
+          }
+        }
+        it.el.remove();
+        items.splice(i, 1);
+        continue;
+      }
+      if(it.y > arenaH + 40){
+        it.el.remove();
+        items.splice(i, 1);
+      }
+    }
+
+    const allCaught = Object.keys(caught).length >= LIST_ITEMS.length;
+    if(timeLeft <= 0 || allCaught){ finish(allCaught); return; }
+    raf = requestAnimationFrame(loop);
+  }
+
+  function teardown(){
+    running = false;
+    if(raf) cancelAnimationFrame(raf);
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('mouseup', pUp);
+    window.removeEventListener('touchend', pUp);
+    arena.removeEventListener('mousedown', pDown);
+    arena.removeEventListener('mousemove', pMove);
+    arena.removeEventListener('touchstart', pDown);
+    arena.removeEventListener('touchmove', pMove);
+  }
+  activeCardCleanup = teardown;
+
+  function finish(complete){
+    if(finished) return;
+    finished = true;
+    teardown();
+    SFX.finish();
+    const got = Object.keys(caught).length;
+    state.stats.groceryList = got;
+    state.stats.miniPlayed++;
+    const total = GROCERY_BASE_COST + impulseCost;
+    const wb = (complete ? 5 : 0) + (got <= 2 ? -5 : 0) + (impulseCount >= 4 ? -2 : 0);
+    let verdict;
+    if(complete && impulseCount === 0)
+      verdict = 'Lista completa e zero compras por impulso — exatamente o que uma lista serve para fazer. Na vida real, esta é a diferença entre gastar 28€ e gastar 50€ pela mesma comida.';
+    else if(impulseCount >= 3)
+      verdict = 'Levaste ' + impulseCount + ' coisas que não estavam na lista. Nenhuma delas custou muito sozinha — foi a soma que fez a diferença, e é quase sempre assim.';
+    else if(!complete)
+      verdict = 'Faltaram ' + (LIST_ITEMS.length - got) + ' produtos da lista. Voltar à loja a meio da semana costuma acabar em mais uma compra por impulso.';
+    else
+      verdict = 'Lista completa, com só ' + impulseCount + ' extra(s). Um ou outro capricho cabe num orçamento — o problema é quando passam a ser a regra.';
+
+    onDone({
+      cost: -total,
+      wb: wb,
+      label: 'Compra da semana',
+      resultsHtml: miniGameResults('🛒', 'Como correu a compra', [
+        { n: got + '/5', l:'produtos da lista' },
+        { n: impulseCount, l:'compras por impulso' },
+        { n: fmtPlain(GROCERY_BASE_COST), l:'compra base' },
+        { n: impulseCost ? '+' + fmtPlain(impulseCost) : '€0', l:'extra por impulso' },
+      ], verdict),
+      tip:'Ir às compras com uma lista — e segui-la — é das formas mais simples de baixar a fatura do supermercado. O que entra no carrinho "já que estou aqui" é o que faz a conta subir.'
+    });
+  }
+
+  raf = requestAnimationFrame(loop);
+}
+
+/* ------------------------------------------------------------
+   MINIJOGO 2 (dia 12) — Dia de pagar contas
+   As contas aparecem com um rastilho a arder. Clicar paga a
+   tempo; deixar acabar o rastilho significa pagar na mesma
+   e ainda levar com uma multa de atraso.
+   ------------------------------------------------------------ */
+const BILLS = [
+  { icon:'📱', name:'Telemóvel', amt:20 },
+  { icon:'💡', name:'Eletricidade', amt:28 },
+  { icon:'🌐', name:'Internet', amt:32 },
+  { icon:'💧', name:'Água', amt:18 },
+  { icon:'🛡️', name:'Seguro', amt:25 },
+  { icon:'🚌', name:'Passe', amt:20 },
+];
+const LATE_FEE = 8;
+const BILL_FUSE_MS = 5200;
+
+function playBillsGame(host, onDone){
+  let paid = 0, late = 0, spent = 0, fees = 0, spawned = 0, resolved = 0;
+  let finished = false;
+
+  host.innerHTML = `
+    <div class="mg-bar">
+      <span class="mg-score" id="blScore">Pagas: 0 · Atrasadas: 0</span>
+      <span class="mg-timer" id="blLeft">0/${BILLS.length}</span>
+    </div>
+    <div class="mg-arena" id="blArena">
+      <div class="bl-bg"></div>
+    </div>
+    <p class="option-desc" style="margin-top:8px;text-align:center;">Clica (ou toca) em cada conta antes de o rastilho acabar</p>
+  `;
+
+  const arena = host.querySelector('#blArena');
+  const scoreEl = host.querySelector('#blScore');
+  const leftEl = host.querySelector('#blLeft');
+  const timers = [];
+  let spawnInterval = 0;
+
+  function updateScore(){
+    scoreEl.textContent = 'Pagas: ' + paid + ' · Atrasadas: ' + late;
+    leftEl.textContent = resolved + '/' + BILLS.length;
+  }
+  updateScore();
+
+  function spawnBill(bill){
+    const el = document.createElement('div');
+    el.className = 'bl-bill';
+    el.innerHTML = `
+      <div class="bl-ico" aria-hidden="true">${bill.icon}</div>
+      <div class="bl-name">${bill.name}</div>
+      <div class="bl-amt">${fmtPlain(bill.amt)}</div>
+      <div class="bl-fuse"><div class="bl-fuse-fill"></div></div>
+    `;
+    const maxX = Math.max(10, arena.clientWidth - 134);
+    const maxY = Math.max(10, arena.clientHeight - 112);
+    el.style.left = (6 + Math.random() * maxX) + 'px';
+    el.style.top = (6 + Math.random() * maxY) + 'px';
+    arena.appendChild(el);
+
+    const fuse = el.querySelector('.bl-fuse-fill');
+    const born = performance.now();
+    let done = false;
+    let raf = 0;
+
+    function tickFuse(now){
+      if(done) return;
+      const frac = Math.max(0, 1 - (now - born) / BILL_FUSE_MS);
+      fuse.style.width = (frac * 100) + '%';
+      fuse.className = 'bl-fuse-fill' + (frac < 0.3 ? ' danger' : (frac < 0.6 ? ' warn' : ''));
+      if(frac <= 0){ expire(); return; }
+      raf = requestAnimationFrame(tickFuse);
+    }
+
+    function settle(){
+      done = true;
+      if(raf) cancelAnimationFrame(raf);
+      resolved++;
+      updateScore();
+      setTimeout(() => el.remove(), 400);
+      if(resolved >= BILLS.length) finish();
+    }
+
+    function pay(){
+      if(done) return;
+      paid++;
+      spent += bill.amt;
+      el.classList.add('paid');
+      SFX.coin();
+      settle();
+    }
+    function expire(){
+      if(done) return;
+      late++;
+      spent += bill.amt;
+      fees += LATE_FEE;
+      el.classList.add('late');
+      SFX.bad();
+      settle();
+    }
+
+    el.addEventListener('click', pay);
+    timers.push(() => { done = true; if(raf) cancelAnimationFrame(raf); });
+    raf = requestAnimationFrame(tickFuse);
+  }
+
+  /* as contas não chegam todas ao mesmo tempo — vão caindo */
+  spawnBill(BILLS[spawned++]);
+  spawnInterval = setInterval(() => {
+    if(spawned >= BILLS.length){ clearInterval(spawnInterval); return; }
+    spawnBill(BILLS[spawned++]);
+  }, 1450);
+
+  function teardown(){
+    clearInterval(spawnInterval);
+    timers.forEach(fn => { try{ fn(); }catch(e){} });
+  }
+  activeCardCleanup = teardown;
+
+  function finish(){
+    if(finished) return;
+    finished = true;
+    teardown();
+    SFX.finish();
+    state.stats.billsOnTime = paid;
+    state.stats.lateFees = fees;
+    state.stats.miniPlayed++;
+    const wb = late === 0 ? 4 : -Math.min(8, late * 2);
+    let verdict;
+    if(late === 0)
+      verdict = 'Todas as contas pagas dentro do prazo, zero multas. Isto é exatamente o que um débito direto faz por ti automaticamente — vale a pena ativá-lo nas contas fixas.';
+    else if(late >= 4)
+      verdict = late + ' contas fora do prazo custaram-te ' + fmtPlain(fees) + ' em multas, por cima do valor que já tinhas de pagar na mesma. As multas de atraso são das despesas mais evitáveis que existem.';
+    else
+      verdict = late + ' conta(s) fora do prazo, ' + fmtPlain(fees) + ' em multas. Pequeno agora, mas repetido todos os meses dá uma conta extra por ano — sem receberes nada em troca.';
+
+    onDone({
+      cost: -(spent + fees),
+      wb: wb,
+      label: 'Contas fixas do mês',
+      resultsHtml: miniGameResults('🧾', 'Como correu o dia das contas', [
+        { n: paid + '/' + BILLS.length, l:'pagas a tempo' },
+        { n: late, l:'fora do prazo' },
+        { n: fmtPlain(spent), l:'valor das contas' },
+        { n: fees ? '+' + fmtPlain(fees) : '€0', l:'multas de atraso' },
+      ], verdict),
+      tip:'As contas fixas vão ser pagas de qualquer forma — a única coisa que o atraso acrescenta é a multa. Débitos diretos e alertas no telemóvel resolvem isto sem esforço.'
+    });
+  }
+}
+
+/* Dias que são minijogos em vez de cartão normal. */
+const MINIGAME_DAYS = {
+  7: { icon:'🛒', eyebrow:'Compras da semana', title:'A compra da semana',
+       brief:'<li>Apanha os <b>5 produtos da lista</b> com o carrinho.</li>' +
+             '<li>Evita o que <b>não está na lista</b> — cada extra soma à conta.</li>' +
+             '<li>Tens <b>22 segundos</b>, ou até a lista ficar completa.</li>',
+       run: playSupermarketGame },
+  12:{ icon:'🧾', eyebrow:'Contas fixas', title:'Dia de pagar contas',
+       brief:'<li>Vão aparecer <b>6 contas</b>, cada uma com um rastilho a arder.</li>' +
+             '<li><b>Clica em cada uma</b> antes de o rastilho acabar.</li>' +
+             '<li>Conta fora do prazo paga-se na mesma — <b>mais €8 de multa</b>.</li>',
+       run: playBillsGame },
+};
+
+/* ============================================================
+   ECRÃ: DIA NORMAL
+   ============================================================ */
+function buildDayCard(){
+  const card = document.createElement('div');
+  card.className = 'card';
+
+  /* --- dias de minijogo --- */
+  const mg = MINIGAME_DAYS[state.day];
+  if(mg){
+    showMiniGameBriefing(card, mg.icon, mg.title, mg.eyebrow, mg.brief, () => {
+      mg.run(card, result => {
+        state.money += result.cost;
+        const wbShown = applyWellbeing(result.wb);
+        state.log.push({ day: state.day, label: result.label, delta: result.cost });
+        updateHud(true);
+        card.innerHTML = `
+          <div class="card-icon" aria-hidden="true">${mg.icon}</div>
+          <div class="card-eyebrow">${mg.eyebrow}</div>
+          <h1 class="card-title">${mg.title}</h1>
+          ${result.resultsHtml}
+          <div class="feedback-result ${result.cost < 0 ? 'cost' : 'zero'}">
+            <span>${fmt(result.cost)} · saldo agora ${fmtPlain(state.money)}</span>
+            ${wbShown ? '<span class="feedback-wb">' + (wbShown > 0 ? '+' : '') + wbShown + ' bem-estar</span>' : ''}
+          </div>
+          <div class="feedback-tip"><b>Porquê:</b> ${result.tip}</div>
+          <button class="primary-btn" id="nextDayBtn">Continuar</button>
+        `;
+        card.querySelector('#nextDayBtn').addEventListener('click', () => { SFX.click(); advanceDay(); });
+      });
+    });
+    return card;
+  }
+
+  /* --- dias normais --- */
+  let content = DAY_CONTENT[state.day];
+
+  if(state.day === 4){
+    const t = state.zone.transport;
+    content = { type:'choice', icon:'🚌', eyebrow:'Transportes', title:'Como te vais deslocar este mês?',
+      prompt:'Trabalhas em ' + state.job.zoneLabel + ' e vives em ' + state.zone.label + ' (' + state.zone.commuteTag.toLowerCase() + '). Como preferes pagar o transporte?',
+      options:[
+        { label:'Passe mensal, pago de uma vez', sub:'Custo fixo previsível', delta:t.passe, wb:1,
+          tip:'Um passe mensal costuma sair mais barato do que pagar bilhete avulso de cada vez, mesmo custando mais à primeira vista.' },
+        { label:'Bilhete avulso, cada vez que precisar', sub:'Parece mais flexível', delta:t.avulso, wb:-1,
+          tip:'Pagar por viagem parece mais leve no momento, mas soma mais ao fim do mês — o preço "pequeno e frequente" engana. Morar em "' + state.zone.label + '" faz esta diferença pesar ainda mais.' },
+      ]};
+  }
+  if(state.day === 26 && state.flags.phoneFixed === false){
+    content = PHONE_BREAKS_FURTHER;
+  }
+
+  /* Rede de segurança: se algum dia ficar sem conteúdo definido, mostra um
+     dia calmo em vez de rebentar o jogo a meio. */
+  if(!content){
+    content = { type:'info', icon:'🗓️', eyebrow:'Dia tranquilo', title:'Nada a assinalar hoje',
+      prompt:'Hoje não aconteceu nada de especial ao teu orçamento.',
+      tip:'Nem todos os dias têm decisões financeiras — e isso também é normal num mês bem gerido.' };
+  }
+
+  const header = document.createElement('div');
+  header.innerHTML = `
+    <div class="card-icon" aria-hidden="true">${content.icon}</div>
+    <div class="card-eyebrow">${content.eyebrow}</div>
+    <h1 class="card-title">${content.title}</h1>
+    <p class="card-prompt">${content.prompt}</p>
+  `;
+  card.appendChild(header);
+
+  const choiceWrap = document.createElement('div');
+  choiceWrap.className = 'choice-list';
+
+  const feedback = document.createElement('div');
+  feedback.className = 'feedback';
+  feedback.innerHTML = `
+    <div class="feedback-result" id="feedbackResult"></div>
+    <div class="feedback-tip" id="feedbackTip"></div>
+    <button class="primary-btn" id="nextDayBtn">Continuar</button>
+  `;
+
+  if(content.type === 'info'){
+    choiceWrap.classList.add('options-hidden');
+    feedback.classList.add('show');
+    const wbShown = applyWellbeing(inferWellbeing(content, null));
+    updateHud();
+    const resEl = feedback.querySelector('#feedbackResult');
+    resEl.className = 'feedback-result zero';
+    resEl.innerHTML = '<span>Sem despesas hoje</span>' +
+      (wbShown ? '<span class="feedback-wb">+' + wbShown + ' bem-estar</span>' : '');
+    feedback.querySelector('#feedbackTip').innerHTML = '<b>Dica:</b> ' + content.tip;
+  } else {
+    content.options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.className = 'choice-btn';
+      const deltaClass = opt.delta < 0 ? 'cost' : (opt.delta > 0 ? 'gain' : 'zero');
+      const wbPreview = inferWellbeing(content, opt);
+      btn.innerHTML = `
+        <span>
+          <span class="choice-label">${opt.label}</span>
+          ${opt.sub ? `<div class="choice-sub">${opt.sub}</div>` : ''}
+        </span>
+        <span class="choice-tags">
+          <span class="choice-delta ${deltaClass}">${opt.delta === 0 ? '€0' : fmt(opt.delta)}</span>
+          ${wbPreview ? `<span class="choice-wb ${wbPreview > 0 ? 'up' : 'down'}">${wbPreview > 0 ? '🙂 +' : '🙁 '}${wbPreview} bem-estar</span>` : ''}
+        </span>
+      `;
+      btn.addEventListener('click', () => {
+        state.money += opt.delta;
+        const wbShown = applyWellbeing(wbPreview);
+        state.log.push({ day: state.day, label: content.title, delta: opt.delta });
+        if(content.eyebrow === 'Convite' && opt.delta < 0) state.stats.outings++;
+        if(content.eyebrow === 'Convite' && opt.delta === 0) state.stats.refusals++;
+        if(opt.flag) state.flags[opt.flag] = (opt.delta === -60);
+        if(opt.delta > 0) SFX.coin(); else if(opt.delta < -60) SFX.bad(); else SFX.click();
+        updateHud(opt.delta !== 0);
+
+        /* avisos que o jogador tem mesmo de ver — uma vez por entrada em
+           negativo, não todos os dias, para não virar ruído */
+        if(state.money < 0 && !state.warnedNegative){
+          state.warnedNegative = true;
+          showToast('⚠️', 'Saldo negativo', 'Estás a gastar mais do que tens. Na vida real, isto é dívida — e enquanto durar pesa no teu bem-estar.', 'bad');
+        } else if(state.money >= 0 && state.warnedNegative){
+          state.warnedNegative = false;
+          showToast('✅', 'Saldo de volta ao positivo', 'Saíste do vermelho.', 'good');
+        } else if(state.wellbeing <= 25 && !state.warnedWellbeing){
+          state.warnedWellbeing = true;
+          showToast('🙁', 'Bem-estar em baixo', 'Um mês sem nada que te dê prazer é difícil de aguentar — e um plano assim raramente chega ao mês seguinte.', 'bad');
+        } else if(state.wellbeing > 40){
+          state.warnedWellbeing = false;
+        }
+
+        choiceWrap.classList.add('options-hidden');
+        feedback.classList.add('show');
+        const resEl = feedback.querySelector('#feedbackResult');
+        resEl.className = 'feedback-result ' + deltaClass;
+        resEl.innerHTML = '<span>' + (opt.delta === 0 ? 'Sem custo' : fmt(opt.delta)) + ' · saldo agora ' + fmtPlain(state.money) + '</span>' +
+          (wbShown ? '<span class="feedback-wb">' + (wbShown > 0 ? '+' : '') + wbShown + ' bem-estar</span>' : '');
+        feedback.querySelector('#feedbackTip').innerHTML = '<b>Porquê:</b> ' + opt.tip;
+      });
+      choiceWrap.appendChild(btn);
+    });
+  }
+
+  card.appendChild(choiceWrap);
+  card.appendChild(feedback);
+
+  const nextBtn = card.querySelector('#nextDayBtn');
+  if(nextBtn) nextBtn.addEventListener('click', () => { SFX.click(); advanceDay(); });
+
+  return card;
+}
+
+/* ============================================================
+   ECRÃ: RESUMO FINAL
+   ============================================================ */
+function buildSummary(){
+  const balance = state.money;
+  let tier;
+  if(balance < 0) tier = { label:'No vermelho', cls:'bad', tip:'Este mês ficaste com saldo negativo — na vida real, isso costuma significar dívida ou cartão de crédito. Vale a pena rever onde os gastos discricionários (saídas, compras por impulso) pesaram mais.' };
+  else if(balance < 80) tier = { label:'Equilibrado, mas apertado', cls:'warn', tip:'Chegaste ao fim do mês sem dívida, mas com muito pouca margem. Um pequeno imprevisto no próximo mês já seria difícil de absorver.' };
+  else if(balance < 220) tier = { label:'Boa gestão', cls:'good', tip:'Fizeste um bom equilíbrio entre viver a vida e cuidar do dinheiro. Continuar a guardar uma parte todos os meses vai criar uma almofada útil.' };
+  else tier = { label:'Excelente poupador(a)', cls:'good', tip:'Terminaste o mês com uma margem sólida. Vale a pena começar a pensar em guardar parte disto numa poupança, em vez de deixar tudo na conta à ordem.' };
+
+  const wbTier = wellbeingVerdict(state.wellbeing);
+  const combined = combinedNote(balance, state.wellbeing, state.daysInDebt);
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="card-icon" aria-hidden="true">🏁</div>
+    <div class="card-eyebrow">Fim do mês</div>
+    <h1 class="card-title">É dia 30 — como correu?</h1>
+    <div class="summary-balance">
+      <div class="num">${fmtPlain(balance)}</div>
+      <div class="tag" style="background:var(--${tier.cls}-bg);color:var(--${tier.cls});">${tier.label}</div>
+    </div>
+    <div class="summary-stats">
+      <div class="stat-box"><div class="n">${Math.round(state.wellbeing)}/100</div><div class="l">bem-estar final</div></div>
+      <div class="stat-box"><div class="n">${state.daysInDebt}</div><div class="l">dias no vermelho</div></div>
+      <div class="stat-box"><div class="n">${state.stats.outings}/${state.stats.outings + state.stats.refusals}</div><div class="l">convites aceites</div></div>
+      <div class="stat-box"><div class="n">${fmtPlain(state.stats.lateFees)}</div><div class="l">multas de atraso</div></div>
+    </div>
+    <div class="chart-wrap">
+      <div class="chart-title">O teu saldo ao longo do mês</div>
+      <div class="chart-area" id="balanceChart"></div>
+      <div class="chart-axis"><span>Dia 1</span><span>Dia ${TOTAL_DAYS}</span></div>
+    </div>
+    <div class="feedback-tip"><b>Dinheiro:</b> ${tier.tip}</div>
+    <div class="feedback-tip"><b>Bem-estar — ${wbTier.label}:</b> ${wbTier.tip}</div>
+    ${combined ? `<div class="feedback-tip" style="background:var(--gold-bg);">${combined}</div>` : ''}
+    <p class="card-prompt" style="margin-top:16px;font-weight:700;color:var(--maroon);">Resumo do mês</p>
+    <div class="summary-log" id="summaryLog"></div>
+    <button class="primary-btn" id="restartBtn">Jogar de novo</button>
+  `;
+
+  /* Gráfico de barras do saldo diário, com a linha do zero no sítio certo:
+     dias negativos têm de descer abaixo dela, não subir como os positivos. */
+  const chart = card.querySelector('#balanceChart');
+  const hist = state.balanceHistory.length ? state.balanceHistory : [state.money];
+  const hiVal = Math.max(0, ...hist);
+  const loVal = Math.min(0, ...hist);
+  const range = Math.max(1, hiVal - loVal);
+  const zeroPct = (hiVal / range) * 100;   /* distância do topo até ao zero */
+
+  hist.forEach(v => {
+    const col = document.createElement('div');
+    col.className = 'bc-col';
+    const pad = document.createElement('div');
+    pad.className = 'bc-pad';
+    const bar = document.createElement('div');
+    bar.className = 'bc-bar' + (v < 0 ? ' neg' : '');
+    bar.title = fmtPlain(v);
+    const magPct = (Math.abs(v) / range) * 100;
+    if(v >= 0){
+      pad.style.height = Math.max(0, zeroPct - magPct) + '%';
+      bar.style.height = Math.max(1.5, magPct) + '%';
+    } else {
+      pad.style.height = zeroPct + '%';
+      bar.style.height = Math.max(1.5, magPct) + '%';
+    }
+    col.appendChild(pad);
+    col.appendChild(bar);
+    chart.appendChild(col);
+  });
+
+  if(loVal < 0){
+    const zero = document.createElement('div');
+    zero.className = 'chart-zero';
+    zero.style.top = zeroPct + '%';
+    zero.innerHTML = '<span>€0</span>';
+    chart.appendChild(zero);
+  } else {
+    chart.style.borderBottom = '1.5px solid var(--grey-line)';
+  }
+
+  const logEl = card.querySelector('#summaryLog');
+  state.log.forEach(entry => {
+    const row = document.createElement('div');
+    row.className = 'summary-log-row';
+    row.innerHTML = `<span>Dia ${entry.day} — ${entry.label}</span><span class="d${entry.delta < 0 ? ' neg' : ''}">${entry.delta === 0 ? '€0' : fmt(entry.delta)}</span>`;
+    logEl.appendChild(row);
+  });
+  card.querySelector('#restartBtn').addEventListener('click', () => location.reload());
+  return card;
+}
+
+/* ============================================================
+   ECRÃ INICIAL, REGRAS, CRÉDITOS
+   ============================================================ */
+const menuOverlay = document.getElementById('menuOverlay');
+const rulesOverlay = document.getElementById('rulesOverlay');
+const creditsOverlay = document.getElementById('creditsOverlay');
+
+function openSheet(el){
+  SFX.click();
+  menuOverlay.classList.add('hidden');
+  el.classList.remove('hidden');
+  const btn = el.querySelector('.primary-btn');
+  if(btn) btn.focus();
+}
+function closeSheet(el){
+  SFX.click();
+  el.classList.add('hidden');
+  menuOverlay.classList.remove('hidden');
+  document.getElementById('menuPlayBtn').focus();
+}
+
+/* Ao carregar em "Jogar" os créditos passam primeiro, como no jogo grande.
+   Correm sozinhos, mas qualquer clique ou tecla salta à frente. */
+const CREDITS_MS = 5200;
+let creditsTimer = null, creditsSkip = null;
+
+function startGameAfterCredits(){
+  if(creditsTimer){ clearTimeout(creditsTimer); creditsTimer = null; }
+  if(creditsSkip){
+    document.removeEventListener('click', creditsSkip, true);
+    document.removeEventListener('keydown', creditsSkip, true);
+    creditsSkip = null;
+  }
+  creditsOverlay.classList.add('hidden');
+  creditsOverlay.classList.remove('credits-auto');
+  document.body.classList.remove('pre-game');
+  state.screen = 'job';
+  render();
+}
+
+document.getElementById('menuPlayBtn').addEventListener('click', () => {
+  SFX.click();
+  menuOverlay.classList.add('hidden');
+  creditsOverlay.classList.add('credits-auto');
+  creditsOverlay.classList.remove('hidden');
+  creditsTimer = setTimeout(startGameAfterCredits, CREDITS_MS);
+  /* um pequeno atraso antes de armar o "saltar", senão o próprio clique
+     que abriu os créditos fecha-os de imediato */
+  setTimeout(() => {
+    if(creditsOverlay.classList.contains('hidden')) return;
+    creditsSkip = () => startGameAfterCredits();
+    document.addEventListener('click', creditsSkip, true);
+    document.addEventListener('keydown', creditsSkip, true);
+  }, 420);
+});
+document.getElementById('menuRulesBtn').addEventListener('click', () => openSheet(rulesOverlay));
+document.getElementById('menuCreditsBtn').addEventListener('click', () => openSheet(creditsOverlay));
+document.getElementById('rulesCloseBtn').addEventListener('click', () => closeSheet(rulesOverlay));
+document.getElementById('creditsCloseBtn').addEventListener('click', () => closeSheet(creditsOverlay));
+
+/* Esc fecha o painel aberto, como em qualquer diálogo. */
+document.addEventListener('keydown', e => {
+  if(e.key !== 'Escape') return;
+  if(!rulesOverlay.classList.contains('hidden')) closeSheet(rulesOverlay);
+  else if(!creditsOverlay.classList.contains('hidden')) closeSheet(creditsOverlay);
+});
+
+/* O som tem dois interruptores (menu e HUD) que têm de dizer o mesmo. */
+function setSound(on){
+  soundOn = on;
+  const hudBtn = document.getElementById('soundBtn');
+  hudBtn.textContent = on ? '🔊' : '🔇';
+  hudBtn.setAttribute('aria-label', on ? 'Desligar o som' : 'Ligar o som');
+  const menuBtn = document.getElementById('menuSoundBtn');
+  menuBtn.textContent = on ? 'Som: ligado' : 'Som: desligado';
+  menuBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  if(on) SFX.click();
+}
+document.getElementById('soundBtn').addEventListener('click', () => setSound(!soundOn));
+document.getElementById('menuSoundBtn').addEventListener('click', () => setSound(!soundOn));
+
+render();
+</script>
+</body>
+</html>
